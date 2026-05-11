@@ -3,18 +3,18 @@
 // row of ▸ doc-button actions.
 
 import { el, app } from './dom.js';
-import { state, resetRun, resetToTitle, MAX_WARDS, FLOORS_TOTAL } from '../state.js';
-import { ADMISSIONS, PATIENTS, ATTACHMENTS, EVENTS, VOICE, FIXATIONS } from '../data.js';
+import { state, resetRun, resetToTitle, FLOORS_TOTAL } from '../state.js';
+import { ADMISSIONS, PATIENTS, ATTACHMENTS, EVENTS, VOICE } from '../data.js';
 import { sfx } from '../audio.js';
 import { parseProse } from './textCorrupt.js';
 import { renderGlyph } from './glyphs.js';
 import { render } from './render.js';
 import { VERSION } from '../version.js';
 import {
-  startRun, chooseNode, advanceCorridor, addAttachment, rollConsultOptions, applyEventEffect, addWard, loseAttachment,
+  startRun, chooseNode, advanceCorridor, addAttachment, rollConsultOptions, applyEventEffect,
 } from '../run.js';
 import {
-  getArchive, isAdmissionUnlocked, filedPatientIds, recordRunResult, recordFile, patientArchive, isFixationKnown, tellsSeenForPatient,
+  getArchive, isAdmissionUnlocked, recordRunResult, patientArchive,
 } from '../persist.js';
 
 // ── start (title) ────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ export function renderStart() {
   intro.innerHTML = parseProse([
     "I found the address on a card I do not remember writing. The road ended at the building.",
     "The nurse opened the door before I knocked. She handed me a file. She said it had been waiting for me.",
-    "There are five floors below this one. ~~No record of patients leaving from the lowest.~~",
+    "There are four floors below this one. ~~No record of patients leaving from the lowest.~~",
     "!!The door at the top is locked from this side.!!",
   ].join('\n\n'));
   page.appendChild(intro);
@@ -105,17 +105,16 @@ export function renderAdmissionConfirm() {
   proseEl.innerHTML = parseProse((adm.admissionProse || []).join('\n\n'));
   page.appendChild(proseEl);
 
-  // How a session works — brief, written in voice. The first time the player
+  // How a session works — written in voice. The first time the player
   // descends, this is their tutorial.
   const rules = el('div', { class: 'doc-prose dim' });
   rules.innerHTML = parseProse([
-    "I have been told how a session goes. Each beat I do one of three things — I press, I hold, or I yield. They do the same.",
-    "Press cuts through Hold. Hold catches Yield. Yield slips past Press.",
-    "Their file ~~tells me what they will do~~ tells me what they are about to. I read it as best I can. ~~Some patients lie. Some cannot help it.~~"
+    "I have been told how a session goes. Each room has a few places I can be. The patient is in one of them. They move on their own — but I can see where they will go next.",
+    "I take turns. I can move to an adjacent place. I can act, if there is something to do where I am. I can wait.",
+    "If I do not reach them before the orderly comes — or before my composure breaks — !!I will not leave the room the way I came in.!!"
   ].join('\n\n'));
   page.appendChild(rules);
 
-  // Show starting kit clearly.
   const kit = el('div', { class: 'doc-kit-block' });
   kit.appendChild(el('div', { class: 'sec-label-doc' }, '─ what I bring with me ─'));
   kit.appendChild(el('div', { class: 'kit-line' }, `composure · ${adm.composure}`));
@@ -123,6 +122,7 @@ export function renderAdmissionConfirm() {
     const lst = el('div', { class: 'kit-attachments' });
     for (const id of adm.startingAttachments) {
       const a = ATTACHMENTS[id];
+      if (!a) continue;
       const row = el('div', { class: 'kit-attachment' });
       row.appendChild(el('div', { class: 'kit-attachment-name' }, a.name));
       const voice = el('div', { class: 'kit-attachment-voice' });
@@ -157,17 +157,15 @@ export function renderCorridor() {
   const floorIdx = c.currentFloor;
   const page = docPage(`// corridor · descent ${floorIdx + 1} of ${FLOORS_TOTAL}`);
 
-  // Status strip.
   page.appendChild(statusStrip());
 
-  // Narrative.
   const intro = el('div', { class: 'doc-prose' });
   const nodeCount = (c.floors[floorIdx] || []).length;
   let lines;
   if (floorIdx === 0) {
     lines = nodeCount === 1
       ? "The first corridor is short. There is one door ahead, and I do not have a choice. !!I go through.!!"
-      : "The first corridor is short. The doors are not closed.\nI can take any of them. ~~All are open.~~ I pick one.";
+      : "The first corridor is short. The doors are not closed. I can take any of them. ~~All are open.~~ I pick one.";
   } else if (floorIdx === FLOORS_TOTAL - 1) {
     lines = "The stairs end at the lowest floor. The desk is ahead. !!Someone is sitting at it.!!";
   } else {
@@ -178,7 +176,6 @@ export function renderCorridor() {
   intro.innerHTML = parseProse(lines);
   page.appendChild(intro);
 
-  // Nodes row.
   page.appendChild(el('div', { class: 'sec-label-doc' }, '─ the rooms ahead ─'));
   const row = el('div', { class: 'node-row' });
   const nodes = c.floors[floorIdx] || [];
@@ -187,10 +184,7 @@ export function renderCorridor() {
   });
   page.appendChild(row);
 
-  // Path-so-far breadcrumb.
-  if (floorIdx > 0) {
-    page.appendChild(pathBreadcrumb());
-  }
+  if (floorIdx > 0) page.appendChild(pathBreadcrumb());
 
   page.appendChild(actionRow(
     docButton('forfeit · close my file', () => {
@@ -206,8 +200,7 @@ export function renderCorridor() {
 
 function nodeCardEl(node, idx, floorIdx) {
   const card = el('div', { class: 'node-card node-kind-' + node.kind });
-  const kindLabel = nodeKindLabel(node.kind);
-  card.appendChild(el('div', { class: 'node-kind-tag' }, kindLabel));
+  card.appendChild(el('div', { class: 'node-kind-tag' }, nodeKindLabel(node.kind)));
 
   if (node.kind === 'patient' || node.kind === 'keeper' || node.kind === 'warden') {
     const patient = PATIENTS[node.patientId];
@@ -221,14 +214,8 @@ function nodeCardEl(node, idx, floorIdx) {
     nameLine.innerHTML = seen ? parseProse(patient.displayName) : '[a patient]';
     card.appendChild(nameLine);
     const subLine = el('div', { class: 'node-subtitle' });
-    if (seen) subLine.innerHTML = parseProse(patient.subtitle);
-    else      subLine.innerHTML = parseProse('~~unfamiliar~~ name not on the door.');
+    subLine.innerHTML = seen ? parseProse(patient.subtitle) : parseProse('~~unfamiliar~~ name not on the door.');
     card.appendChild(subLine);
-    if (seen) {
-      const meta = el('div', { class: 'node-meta' });
-      meta.appendChild(el('span', { class: 'meta-cell' }, `composure · ${patient.composure}`));
-      card.appendChild(meta);
-    }
   } else if (node.kind === 'quiet') {
     const ev = EVENTS[node.eventId];
     card.appendChild(el('div', { class: 'node-glyph quiet' }, '·'));
@@ -286,7 +273,6 @@ export function renderQuiet() {
   if (!ev) { advanceCorridor(); render(); return; }
   const page = docPage(ev.title);
 
-  // If the player has already picked an option, show the outcome and a continue.
   const last = state.event.lastChoiceOutcome;
   if (last) {
     const outcome = el('div', { class: 'doc-prose' });
@@ -299,7 +285,6 @@ export function renderQuiet() {
     return;
   }
 
-  // Render the scene.
   const proseEl = el('div', { class: 'doc-prose' });
   proseEl.innerHTML = parseProse((ev.prose || []).join('\n\n'));
   page.appendChild(proseEl);
@@ -321,7 +306,6 @@ export function renderQuiet() {
       sfx('select');
       for (const eff of choice.effects || []) applyEventEffect(eff);
       state.event.lastChoiceOutcome = choice.outcome;
-      // If event killed the player, route to gameover.
       if (state.endResult && state.endResult.kind === 'lost') {
         recordRunResult(false);
         state.screen = 'gameover';
@@ -338,7 +322,6 @@ export function renderQuiet() {
 
 // ── consult node ─────────────────────────────────────────────────────
 export function renderConsult() {
-  // Roll options once per visit.
   if (!state._consultRoll) state._consultRoll = rollConsultOptions();
   const opts = state._consultRoll;
 
@@ -356,10 +339,10 @@ export function renderConsult() {
   const list = el('div', { class: 'choice-list' });
   for (const id of opts) {
     const a = ATTACHMENTS[id];
+    if (!a) continue;
     const row = el('button', { class: 'choice-row consult-row' });
     row.appendChild(el('span', { class: 'choice-marker' }, '▸ '));
-    const lab = el('div', { class: 'choice-label' }, a.name);
-    row.appendChild(lab);
+    row.appendChild(el('div', { class: 'choice-label' }, a.name));
     const voice = el('div', { class: 'choice-voice' });
     voice.innerHTML = parseProse(a.voice);
     row.appendChild(voice);
@@ -367,7 +350,6 @@ export function renderConsult() {
     row.addEventListener('click', () => {
       if (state.attachments.length >= 4) {
         state._consultPendingAddId = id;
-        state.screen = 'consult';
         render();
         return;
       }
@@ -379,7 +361,6 @@ export function renderConsult() {
     });
     list.appendChild(row);
   }
-  // Rest option — always available.
   const rest = el('button', { class: 'choice-row consult-row consult-rest' });
   rest.appendChild(el('span', { class: 'choice-marker' }, '▸ '));
   rest.appendChild(el('div', { class: 'choice-label' }, 'rest'));
@@ -398,7 +379,6 @@ export function renderConsult() {
 
   page.appendChild(list);
 
-  // If the player tried to take an attachment when full, prompt to swap.
   if (state._consultPendingAddId) {
     page.appendChild(el('div', { class: 'sec-label-doc' }, '─ I am already carrying four. swap one ─'));
     const swap = el('div', { class: 'choice-list' });
@@ -442,7 +422,6 @@ export function renderReached() {
 
   const page = docPage(`// session · ${patient.displayName} · reached`);
 
-  // Patient dossier echo.
   const dossier = el('div', { class: 'reached-dossier' });
   const glyph = el('div', { class: 'reached-glyph' });
   glyph.innerHTML = renderGlyph(patient.species);
@@ -460,62 +439,22 @@ export function renderReached() {
   dossier.appendChild(right);
   page.appendChild(dossier);
 
-  page.appendChild(el('div', { class: 'sec-label-doc' }, '─ I can ─'));
-  const list = el('div', { class: 'choice-list' });
+  // Reach rewards: recover composure.
+  const heal = 4;
+  state.composure = Math.min(state.composureMax, state.composure + heal);
 
-  const canFile = !!patient.ward && state.wards.length < MAX_WARDS && !state.wards.find(w => w.speciesId === patient.species);
+  const restLine = el('div', { class: 'doc-prose dim' });
+  restLine.innerHTML = parseProse(`I sit in their room a little longer. My composure returns. ~~Some of it.~~`);
+  page.appendChild(restLine);
 
-  // File them as a ward.
-  const fileRow = el('button', { class: 'choice-row' + (canFile ? '' : ' disabled') });
-  fileRow.appendChild(el('span', { class: 'choice-marker' }, '▸ '));
-  fileRow.appendChild(el('div', { class: 'choice-label' }, canFile ? `file them · ${patient.displayName}` : 'file them'));
-  const fileVoice = el('div', { class: 'choice-voice' });
-  if (!patient.ward) {
-    fileVoice.innerHTML = parseProse('~~there is nothing they can carry for me.~~ they cannot be filed.');
-  } else if (state.wards.length >= MAX_WARDS) {
-    fileVoice.innerHTML = parseProse('~~I am already keeping two.~~ I would have to let one go.');
-  } else if (state.wards.find(w => w.speciesId === patient.species)) {
-    fileVoice.innerHTML = parseProse('they are already with me.');
-  } else {
-    fileVoice.innerHTML = parseProse('they come with me. once a descent, I can call.');
-  }
-  fileRow.appendChild(fileVoice);
-  if (patient.ward) {
-    const w = patient.ward;
-    fileRow.appendChild(el('div', { class: 'choice-desc' }, `${w.name} — ${w.desc}`));
-  }
-  if (canFile) {
-    fileRow.addEventListener('click', () => {
-      sfx('capture');
-      addWard(patient.species);
-      recordFile(patient.species);
+  page.appendChild(actionRow(
+    docButton('descend', () => {
+      sfx('select');
       state._reachInfo = null;
       advanceCorridor();
       render();
-    });
-  } else {
-    fileRow.disabled = true;
-  }
-  list.appendChild(fileRow);
-
-  // Let them rest — heal.
-  const restRow = el('button', { class: 'choice-row' });
-  restRow.appendChild(el('span', { class: 'choice-marker' }, '▸ '));
-  restRow.appendChild(el('div', { class: 'choice-label' }, 'let them rest'));
-  const restVoice = el('div', { class: 'choice-voice' });
-  restVoice.innerHTML = parseProse('I sit with them. The file closes. ~~Something of theirs is left in the room.~~');
-  restRow.appendChild(restVoice);
-  restRow.appendChild(el('div', { class: 'choice-desc' }, 'recover 4 composure. their file closes against mine.'));
-  restRow.addEventListener('click', () => {
-    sfx('heal');
-    state.composure = Math.min(state.composureMax, state.composure + 4);
-    state._reachInfo = null;
-    advanceCorridor();
-    render();
-  });
-  list.appendChild(restRow);
-
-  page.appendChild(list);
+    })
+  ));
   app().appendChild(page);
 }
 
@@ -544,10 +483,8 @@ export function renderOverwhelmed() {
   dossier.appendChild(right);
   page.appendChild(dossier);
 
-  // The run ends.
-  page.appendChild(el('div', { class: 'doc-prose' }, ''));
   const lossProse = el('div', { class: 'doc-prose' });
-  lossProse.innerHTML = parseProse(VOICE.outcomes.loss_intro);
+  lossProse.innerHTML = parseProse((VOICE.outcomes && VOICE.outcomes.loss_intro) || 'I leave the room with less in me than I came with.');
   page.appendChild(lossProse);
 
   page.appendChild(actionRow(
@@ -574,7 +511,6 @@ export function renderVictory() {
   ].join('\n\n'));
   page.appendChild(intro);
 
-  // Record win in archive (once).
   if (!state._winRecorded) {
     state._winRecorded = true;
     const r = recordRunResult(true);
@@ -627,7 +563,6 @@ export function renderArchive() {
   intro.innerHTML = parseProse('every patient I have read. ~~Some I cannot stop reading.~~');
   page.appendChild(intro);
 
-  // Run summary.
   const runs = el('div', { class: 'archive-summary' });
   runs.appendChild(el('span', { class: 'archive-summary-cell' }, `descents · ${a.runs.completed}`));
   runs.appendChild(el('span', { class: 'archive-summary-cell' }, `reached the door · ${a.runs.won}`));
@@ -649,7 +584,6 @@ export function renderArchive() {
     page.appendChild(list);
   }
 
-  // Locked / unseen patients (just the count).
   const unseen = patientIds.filter(id => !a.patients[id] || a.patients[id].encounters === 0).length;
   if (unseen > 0) {
     const dim = el('div', { class: 'doc-prose dim' });
@@ -680,12 +614,10 @@ function archivePatientCard(p, data) {
   const meta = el('div', { class: 'archive-meta' });
   meta.appendChild(el('span', { class: 'meta-cell' }, `encounters · ${data.encounters}`));
   meta.appendChild(el('span', { class: 'meta-cell' }, `reached · ${data.reaches}`));
-  if (data.filed) meta.appendChild(el('span', { class: 'meta-cell filed' }, 'filed'));
   headRight.appendChild(meta);
   head.appendChild(headRight);
   card.appendChild(head);
 
-  // Notes.
   const notes = el('div', { class: 'archive-notes' });
   for (const line of p.notes || []) {
     const ln = el('div', { class: 'archive-note-line' });
@@ -694,44 +626,12 @@ function archivePatientCard(p, data) {
   }
   card.appendChild(notes);
 
-  // Fixation hint or reveal.
-  const fix = FIXATIONS[p.fixation.type] || {};
-  const revealed = isFixationKnown(p.species, fix.revealAt || 99);
-  const fxBlock = el('div', { class: 'archive-fixation' });
-  fxBlock.appendChild(el('div', { class: 'archive-fixation-label' }, revealed ? `fixation · ${fix.name}` : 'fixation · ~~unfiled~~ deducing'));
-  const txt = el('div', { class: 'archive-fixation-text' });
-  if (revealed) {
-    txt.textContent = fix.desc || '';
-  } else {
-    txt.innerHTML = parseProse(p.fixation.hint || '─ the file does not yet say ─');
+  // For patients reached at least once, show their win signature.
+  if (data.reaches > 0) {
+    const sig = el('div', { class: 'archive-signature' });
+    sig.innerHTML = parseProse(p.signature.onWin);
+    card.appendChild(sig);
   }
-  fxBlock.appendChild(txt);
-  card.appendChild(fxBlock);
-
-  // Tells.
-  const tellsSeen = data.tellsSeen || { press: [], hold: [], yield: [] };
-  const tellsBlock = el('div', { class: 'archive-tells' });
-  tellsBlock.appendChild(el('div', { class: 'archive-tells-label' }, 'tells observed'));
-  for (const move of ['press', 'hold', 'yield']) {
-    const tellArr = (p.tells && p.tells[move]) || [];
-    if (tellArr.length === 0) continue;
-    const moveBlock = el('div', { class: 'archive-tells-move' });
-    moveBlock.appendChild(el('span', { class: 'archive-tells-movename' }, move));
-    const inline = el('div', { class: 'archive-tells-list' });
-    for (let i = 0; i < tellArr.length; i++) {
-      const seen = tellsSeen[move].includes(i);
-      const ln = el('div', { class: 'archive-tell-line' + (seen ? ' seen' : ' unseen') });
-      if (seen) {
-        ln.innerHTML = parseProse(tellArr[i]);
-      } else {
-        ln.innerHTML = '<span class="redact" style="width:24ch;"> </span>';
-      }
-      inline.appendChild(ln);
-    }
-    moveBlock.appendChild(inline);
-    tellsBlock.appendChild(moveBlock);
-  }
-  card.appendChild(tellsBlock);
 
   return card;
 }
@@ -757,7 +657,6 @@ function docButton(label, onclick, variant) {
   ]);
 }
 
-// Status strip shown on corridor, event, consult — what you're carrying.
 function statusStrip() {
   const wrap = el('div', { class: 'status-strip' });
 
@@ -786,25 +685,9 @@ function statusStrip() {
   attCell.appendChild(attList);
   wrap.appendChild(attCell);
 
-  const wardCell = el('div', { class: 'status-cell wards' });
-  wardCell.appendChild(el('div', { class: 'status-cell-label' }, 'with me'));
-  const wardList = el('div', { class: 'status-pill-list' });
-  if (state.wards.length === 0) {
-    wardList.appendChild(el('span', { class: 'status-pill empty' }, '— alone —'));
-  } else {
-    for (const w of state.wards) {
-      const p = PATIENTS[w.speciesId];
-      const lbl = p ? p.displayName.replace(/^\[|\]$/g, '') : w.speciesId;
-      wardList.appendChild(el('span', { class: 'status-pill' + (w.used ? ' used' : '') }, `[${lbl}]${w.used ? ' (spent)' : ''}`));
-    }
-  }
-  wardCell.appendChild(wardList);
-  wrap.appendChild(wardCell);
-
   return wrap;
 }
 
 function unknownGlyphSvg() {
-  // A blank smudge for unknowns.
   return `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" fill="currentColor"><rect x="13" y="14" width="2" height="2"/><rect x="17" y="13" width="2" height="2"/><rect x="15" y="17" width="2" height="2"/></svg>`;
 }

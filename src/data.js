@@ -2,7 +2,6 @@
 // All other modules import from this file (named exports populated at load time).
 
 export const PATIENTS = {};
-export const FIXATIONS = {};
 export const ATTACHMENTS = {};
 export const ADMISSIONS = {};
 export const EVENTS = {};
@@ -29,9 +28,8 @@ function copyExcludingFormat(src, dst) {
 }
 
 export async function loadData() {
-  const [patients, fixations, attachments, admissions, events, glyphs, voice] = await Promise.all([
+  const [patients, attachments, admissions, events, glyphs, voice] = await Promise.all([
     fetchJson('data/patients.json'),
-    fetchJson('data/fixations.json'),
     fetchJson('data/attachments.json'),
     fetchJson('data/admissions.json'),
     fetchJson('data/events.json'),
@@ -39,7 +37,6 @@ export async function loadData() {
     fetchJson('data/voiceprose.json'),
   ]);
   copyExcludingFormat(patients, PATIENTS);
-  copyExcludingFormat(fixations, FIXATIONS);
   copyExcludingFormat(attachments, ATTACHMENTS);
   copyExcludingFormat(admissions, ADMISSIONS);
   copyExcludingFormat(events, EVENTS);

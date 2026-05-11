@@ -1,11 +1,6 @@
-// Global game state. Most modules import `state` and mutate it directly. The
-// renderer reads `state.screen` to dispatch to a screen renderer. Most data
-// that persists across runs lives in src/persist.js (localStorage); state.js
-// holds the current run only.
+// Global run-scoped game state. Persistent state lives in src/persist.js.
 
-export const FLOORS_TOTAL = 5;
-export const NODES_PER_FLOOR = 3;
-export const MAX_WARDS = 2;
+export const FLOORS_TOTAL = 4;
 export const MAX_ATTACHMENTS = 4;
 
 export const state = {
@@ -16,20 +11,19 @@ export const state = {
   composureMax: 14,
   composure: 14,
   attachments: [],          // attachment ids carried by the protagonist
-  wards: [],                // { speciesId, used:bool } — once-per-session abilities
-  protagonistFile: [],      // narrative lines appended to the protagonist's file across the run
+  protagonistFile: [],
 
   // corridor:
-  corridor: null,           // { floors: [[node, node, ...], ...], path: [floorIdx → pickedNodeIdx], currentFloor, currentNode }
+  corridor: null,
 
-  // session-scoped (populated when entering a session):
+  // session-scoped:
   session: null,
 
   // event-scoped:
-  event: null,              // { id, lastChoiceOutcome? }
+  event: null,
 
   // results:
-  endResult: null,          // { kind: 'won'|'lost', meta }
+  endResult: null,
 };
 
 export function resetRun() {
@@ -37,7 +31,6 @@ export function resetRun() {
   state.composureMax = 14;
   state.composure = 14;
   state.attachments = [];
-  state.wards = [];
   state.protagonistFile = [];
   state.corridor = null;
   state.session = null;

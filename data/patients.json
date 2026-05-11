@@ -1,8 +1,8 @@
 {
   "_format": {
-    "note": "One entry per patient species. The patient is the unit of encounter — a person, not a stat-block. Fields: species (id, used for glyph lookup), displayName (the [bracketed] file name), subtitle (institutional one-liner), notes (dossier paragraphs, 3 lines), composure (max — the resource that runs to 0 to reach them), strength (damage multiplier 0.6-1.4), fixation (the behavioral rule that drives them — key into fixations.json, plus the voice-prose hint that lets the player infer it from the file), tells (3 voice-prose phrases per move; a phrase appears as their telegraph and the player decodes which move it signals), signature (onWin/onLoss — closing voice line; onWin = patient reached, onLoss = protagonist overwhelmed by them), tier (1-3, drives which floors they appear on), wardOnly (true = never appears as encounter, only as a starting ward), ward (optional — when filed, becomes a ward with this once-per-session ability). Inline corruption markup applies: ~~strike~~, [[N]], **gold**, !!red!!.",
-    "tells_lookup": "When a patient is about to act, one of their 3 tells for the chosen move is picked at random and shown to the player BEFORE they choose. A patient with 'forget' or similar fixation may lie — a tell from a different move may be shown instead. The player learns the tell vocabulary across encounters; the archive tracks which phrases have been seen.",
-    "fixation_hint": "The hint string is voice prose written so the careful reader can deduce the fixation. After a patient is encountered 3+ times the archive reveals the fixation name explicitly. Until then, the hint is all the player gets."
+    "note": "Each patient is a small tactical puzzle. The dossier (subtitle, notes, signature) is preserved from the previous design, but combat is replaced by ROOM data: a graph of named positions, a patient that moves through them according to a deterministic PATTERN, items that can be picked up or interacted with, and ACTIONS available at specific positions under specific conditions. The win condition is reached by executing an action whose effect is 'win'. The puzzle is figuring out which sequence of moves + acts reaches that win action before the turn limit or before composure runs out.",
+    "patterns_reference": "Movement patterns live in src/patterns.js. Each pattern function takes (session, patientPos) and returns the patient's NEXT position id. The next move is telegraphed to the player at end of each turn.",
+    "win_loss": "Win: trigger an action with effect 'win'. Loss: composure <= 0 OR turnsRemaining <= 0. A few patients also have hard-lose conditions (e.g. patient escapes a position)."
   },
   "Mosshorn": {
     "species": "Mosshorn",
@@ -13,26 +13,63 @@
       "Subject was in bed at 22:00. Subject was at the window at 06:00.",
       "Staff present that night ~~do not~~ will not say."
     ],
-    "composure": 14,
-    "strength": 0.7,
-    "fixation": {
-      "type": "locked_hold",
-      "hint": "He does not move. He has not, in any season the staff remember."
+    "tier": 1,
+    "intro": "He sits on the bed. He has not moved in fifty years. The chair beside the bed is empty. The window is open against the grey.",
+    "room": {
+      "positions": {
+        "door":   { "name": "the door",   "prose": "I am at the door. The room is cold." },
+        "bed":    { "name": "the bed",    "prose": "I am beside the bed. He does not look up." },
+        "chair":  { "name": "the chair",  "prose": "I am in the chair beside the bed. The chair is the same height as the bed." },
+        "window": { "name": "the window", "prose": "I am at the window. The garden is grey." }
+      },
+      "edges": [["door","bed"],["door","window"],["door","chair"],["bed","chair"],["window","chair"],["bed","window"]],
+      "items": [],
+      "playerStart": "door",
+      "patientStart": "bed",
+      "patientPattern": { "type": "still" },
+      "turnLimit": 8,
+      "playerComposureMax": 6
     },
-    "tells": {
-      "press": [],
-      "hold": [
-        "He does not stir.",
-        "His weight does not shift.",
-        "He is where he was."
-      ],
-      "yield": []
-    },
+    "actions": [
+      {
+        "id": "sit_with_him",
+        "at": "chair",
+        "requires": { "patientAt": "bed" },
+        "label": "Sit with him.",
+        "voice": "I do not say anything. I sit. The chair takes my weight. ~~He is somewhere else.~~",
+        "effect": "win"
+      },
+      {
+        "id": "look_out_window",
+        "at": "window",
+        "label": "Look out at the garden.",
+        "voice": "The garden is grey. The bench is empty. I can see the same view he has been seeing for fifty years.",
+        "effect": "narrative",
+        "once": true
+      },
+      {
+        "id": "ask_him",
+        "at": "chair",
+        "requires": { "patientAt": "bed" },
+        "label": "Ask him what he sees.",
+        "voice": "He does not answer. I think he is somewhere else. ~~The chair beside the bed has been empty for a long time.~~",
+        "effect": { "composure": -1 },
+        "once": true
+      },
+      {
+        "id": "stand_at_bed",
+        "at": "bed",
+        "requires": { "patientAt": "bed" },
+        "label": "Stand over the bed.",
+        "voice": "I stand above him. He does not register me. ~~I am not the visitor he is waiting for.~~",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
     "signature": {
       "onWin": "He is the same as he was. I have just ~~understood~~ stood with him.",
       "onLoss": "I leave the room before he does. The room is the same. ~~I am not.~~"
-    },
-    "tier": 1
+    }
   },
   "Cinderling": {
     "species": "Cinderling",
@@ -43,68 +80,55 @@
       "Patient was eight. The rest of the family was indoors.",
       "Refers to her brother in present tense. ~~**I** answer when she calls.~~"
     ],
-    "composure": 8,
-    "strength": 0.9,
-    "fixation": {
-      "type": "refuse_yield",
-      "hint": "She does not give ground. There is nothing left to give."
+    "tier": 1,
+    "intro": "She is in the yard. She is small. The front door is behind the porch. !!Each turn she is closer to it.!! There is a bench on the porch. The swing.",
+    "room": {
+      "positions": {
+        "door":   { "name": "the front door",  "prose": "I am at the door. The handle is hot. ~~She will go through me.~~" },
+        "porch":  { "name": "the porch",       "prose": "I am on the porch. The wood is warm under me." },
+        "bench":  { "name": "the bench",       "prose": "I am at the bench. The swing is beside it. I can see her from here." },
+        "yard":   { "name": "the yard",        "prose": "I am in the yard. She is small in front of me. ~~The grass is dry.~~" }
+      },
+      "edges": [["door","porch"],["porch","bench"],["porch","yard"],["bench","yard"]],
+      "items": [],
+      "playerStart": "porch",
+      "patientStart": "yard",
+      "patientPattern": { "type": "toward", "target": "door" },
+      "turnLimit": 5,
+      "playerComposureMax": 6,
+      "loseIf": { "patientAt": "door" }
     },
-    "tells": {
-      "press": [
-        "She runs at the door.",
-        "Her small fists work the air.",
-        "She bites at the strap."
-      ],
-      "hold": [
-        "She makes herself smaller against the wall.",
-        "She pulls her knees to her chin.",
-        "She covers her ears with her sleeves."
-      ],
-      "yield": []
-    },
-    "signature": {
-      "onWin": "She lets me sit with her. I do not say his name. She does.",
-      "onLoss": "She is calling for her brother. I do not answer with my own."
-    },
-    "tier": 1
-  },
-  "Emberkin": {
-    "species": "Emberkin",
-    "displayName": "[Emberkin]",
-    "subtitle": "The mother has not left.",
-    "notes": [
-      "Subject is the size of a six-month-old. ~~Fever.~~ Cold to the touch.",
-      "Staff have not informed her [[12]]. She has not asked.",
-      "Asked when *it* could leave. Corrected herself. !!She meant herself.!!"
+    "actions": [
+      {
+        "id": "call_brother_from_bench",
+        "at": "bench",
+        "requires": { "patientAt": "porch" },
+        "label": "Call her brother's name from the bench.",
+        "voice": "I call his name. ~~The name she calls.~~ She turns. She comes to the bench. She sits with me. The swing creaks.",
+        "effect": "win"
+      },
+      {
+        "id": "kneel_yard",
+        "at": "yard",
+        "requires": { "patientAt": "yard" },
+        "label": "Kneel down beside her in the yard.",
+        "voice": "I kneel. !!Her hands are warm.!! She does not stop walking toward the porch.",
+        "effect": { "composure": -1 },
+        "once": true
+      },
+      {
+        "id": "block_door",
+        "at": "door",
+        "label": "Stand in the doorway.",
+        "voice": "I block the door. ~~She runs into me.~~ She walks around me without slowing.",
+        "effect": { "composure": -2 },
+        "once": true
+      }
     ],
-    "composure": 10,
-    "strength": 1.0,
-    "fixation": {
-      "type": "sink_hold",
-      "hint": "When the room slips from her, she will not let go."
-    },
-    "tells": {
-      "press": [
-        "She reaches across the bed.",
-        "Her grip closes on the linen.",
-        "She leans toward what is hers."
-      ],
-      "hold": [
-        "She does not move. Her hand is on the bedrail.",
-        "Her shoulders square between us.",
-        "She watches it breathe. ~~It does not.~~"
-      ],
-      "yield": [
-        "She brings her hand back to her lap.",
-        "She lowers her eyes.",
-        "She turns her face from the door."
-      ]
-    },
     "signature": {
-      "onWin": "I do not tell her. I sit with her for a while. ~~The bed is still warm.~~",
-      "onLoss": "She has taken something of mine to the bed. I do not ask for it back."
-    },
-    "tier": 1
+      "onWin": "She lets me sit with her on the bench. I do not say his name again. She does not either. ~~The swing creaks.~~",
+      "onLoss": "She is through the door before I can reach her. The house is dark behind it. ~~There was a fire.~~"
+    }
   },
   "Soothlick": {
     "species": "Soothlick",
@@ -115,154 +139,66 @@
       "Found in other patients' rooms after lights-out. She does not turn the door handle.",
       "Patients she has tended report **sleeping better**. They do not wake all the way."
     ],
-    "composure": 12,
-    "strength": 0.75,
-    "fixation": {
-      "type": "bound_hold_then",
-      "hint": "She tends first. She does not lash out — until she has tucked them in."
-    },
-    "tells": {
-      "press": [
-        "She lifts the dose.",
-        "Her hand finds the soft place under the jaw.",
-        "She closes the curtains around me."
+    "tier": 2,
+    "intro": "She moves between three beds. The patients in them do not stir. There is a basin where she rinses her hands. There is a chair where the visitor sits.",
+    "room": {
+      "positions": {
+        "door":   { "name": "the door",  "prose": "I am at the door. The hinges do not creak when she passes through." },
+        "bed_a":  { "name": "the first bed",  "prose": "I am at the first bed. The patient is tucked in. He breathes shallowly." },
+        "bed_b":  { "name": "the second bed", "prose": "I am at the second bed. The patient is tucked in. She breathes shallowly." },
+        "bed_c":  { "name": "the third bed",  "prose": "I am at the third bed. The patient is tucked in. ~~They are.~~" },
+        "basin":  { "name": "the basin", "prose": "I am at the basin where she rinses her hands. The water is always running." },
+        "chair":  { "name": "the visitor's chair", "prose": "I am in the visitor's chair. The chair is positioned to face all three beds." }
+      },
+      "edges": [
+        ["door","bed_a"],["bed_a","bed_b"],["bed_b","bed_c"],
+        ["door","basin"],["basin","chair"],["chair","bed_a"],["chair","bed_b"],["chair","bed_c"]
       ],
-      "hold": [
-        "She smooths the linen.",
-        "She tucks the corner under.",
-        "She straightens the chair beside the bed."
-      ],
-      "yield": [
-        "She steps back from the side of the bed.",
-        "She rinses her hands at the basin.",
-        "She makes a note. She does not look up."
-      ]
+      "items": [],
+      "playerStart": "door",
+      "patientStart": "bed_a",
+      "patientPattern": { "type": "cycle", "sequence": ["bed_a","bed_b","bed_c","basin"] },
+      "turnLimit": 9,
+      "playerComposureMax": 7
     },
+    "actions": [
+      {
+        "id": "intercept_at_basin",
+        "at": "basin",
+        "requires": { "patientAt": "basin" },
+        "label": "Take the towel and dry her hands for her.",
+        "voice": "She lets me. ~~No one has done this for her.~~ She looks at me. The water keeps running.",
+        "effect": "win"
+      },
+      {
+        "id": "sit_in_chair",
+        "at": "chair",
+        "label": "Sit in the visitor's chair and wait.",
+        "voice": "I watch her work. She does not see me at first. The room smells of soap.",
+        "effect": "narrative",
+        "once": true
+      },
+      {
+        "id": "uncover_bed_a",
+        "at": "bed_a",
+        "label": "Pull the linen back.",
+        "voice": "The patient does not stir. !!The chest does not rise.!! I tuck the linen back as it was.",
+        "effect": { "composure": -2 },
+        "once": true
+      },
+      {
+        "id": "say_her_name",
+        "at": "bed_b",
+        "requires": { "patientAt": "bed_b" },
+        "label": "Say her own name to her, beside the bed.",
+        "voice": "She pauses for the first time. ~~The patient in the bed does not.~~ She begins to move again.",
+        "effect": { "composure": -1 }
+      }
+    ],
     "signature": {
       "onWin": "She lets me see what she carries. It is a list of names. ~~Some are mine.~~",
-      "onLoss": "She tucks me in. The blanket is warm. I do not wake all the way."
-    },
-    "tier": 2,
-    "ward": {
-      "name": "Tend",
-      "desc": "The patient does not act this beat. You take no damage. Use once.",
-      "voice": "[Soothlick] comes in from the corridor. She closes the curtain.",
-      "effect": "skip_beat"
+      "onLoss": "She tucks me into the chair. The blanket is warm. ~~I do not wake all the way.~~"
     }
-  },
-  "Ashmaw": {
-    "species": "Ashmaw",
-    "displayName": "[Ashmaw]",
-    "subtitle": "She has not stopped eating since admission.",
-    "notes": [
-      "Subject has consumed everything offered. She continues to ask.",
-      "Found chewing on the bedframe. ~~Iron filings~~ flecks recovered from her mouth.",
-      "Asked when she was last full. !!She does not remember being.!!"
-    ],
-    "composure": 11,
-    "strength": 1.1,
-    "fixation": {
-      "type": "compulsion_press",
-      "hint": "Once she has begun, she does not stop. Each bite ~~asks for~~ takes the next."
-    },
-    "tells": {
-      "press": [
-        "She leans over the tray.",
-        "Her jaw works on nothing.",
-        "She turns her teeth toward the strap."
-      ],
-      "hold": [
-        "She chews. She does not look up.",
-        "She keeps the bedframe between her teeth.",
-        "She does not put it down."
-      ],
-      "yield": [
-        "She swallows what she has.",
-        "She lets the spoon fall.",
-        "Her chewing slows for a moment."
-      ]
-    },
-    "signature": {
-      "onWin": "I find what she is full of. It is a name. I ~~feed~~ leave it to her.",
-      "onLoss": "She is still hungry. The chair I sat in is ~~empty~~ no longer."
-    },
-    "tier": 2
-  },
-  "Rivergeist": {
-    "species": "Rivergeist",
-    "displayName": "[Rivergeist]",
-    "subtitle": "She is found in the same hallway each time.",
-    "notes": [
-      "Patient has attempted to leave the ward seventeen times this week.",
-      "Each attempt ends in the east hallway. She does not remember the others.",
-      "Asked where she was going. Answered: !!the same place she came from.!!"
-    ],
-    "composure": 9,
-    "strength": 0.95,
-    "fixation": {
-      "type": "drift_cycle",
-      "hint": "She walks the same loop. The order is the same each time."
-    },
-    "tells": {
-      "press": [
-        "She makes for the door.",
-        "She brushes past the orderly.",
-        "She steps over the threshold."
-      ],
-      "hold": [
-        "She turns at the corner. The corner is the same.",
-        "She stops where she has stopped before.",
-        "She rests against the same wall."
-      ],
-      "yield": [
-        "She steps backward, slowly.",
-        "She lets the orderly take her elbow.",
-        "She returns to the bench."
-      ]
-    },
-    "signature": {
-      "onWin": "I walk the loop with her. We reach the corner. We turn back together.",
-      "onLoss": "She continues without me. The hallway is longer than it was."
-    },
-    "tier": 2
-  },
-  "Tidewhelp": {
-    "species": "Tidewhelp",
-    "displayName": "[Tidewhelp]",
-    "subtitle": "His brother insists it is him.",
-    "notes": [
-      "Subject was returned to family after [[5]] missing.",
-      "The brother says it is him. The brother is sure.",
-      "Does not eat what the family eats. ~~Will not.~~ Does not appear to need to."
-    ],
-    "composure": 10,
-    "strength": 1.0,
-    "fixation": {
-      "type": "echo_last",
-      "hint": "He repeats himself. Whatever he did, he does ~~again~~ once more."
-    },
-    "tells": {
-      "press": [
-        "He answers his brother's name with mine.",
-        "He reaches into the pocket of the coat he came in.",
-        "He stands. He does not need to stand."
-      ],
-      "hold": [
-        "He sits where the brother used to sit.",
-        "He keeps the cup at the same angle the brother held it.",
-        "He looks at his own hand. He does not recognize it."
-      ],
-      "yield": [
-        "He leaves the chair empty.",
-        "He turns his face from the photograph.",
-        "He does not answer to either name this time."
-      ]
-    },
-    "signature": {
-      "onWin": "I do not ask which he is. He thanks me for it.",
-      "onLoss": "He has my voice in his now. ~~The family will be glad.~~"
-    },
-    "tier": 2
   },
   "Hollowoak": {
     "species": "Hollowoak",
@@ -273,110 +209,72 @@
       "She has been told the room next door is empty. She continues to thank the staff for *the visits*.",
       "When asked her own name, she gave the orderly's. ~~**I** told her it was hers.~~"
     ],
-    "composure": 11,
-    "strength": 0.9,
-    "fixation": {
-      "type": "forget_tell",
-      "hint": "She does not remember what she means. Her words do not match her hands."
-    },
-    "tells": {
-      "press": [
-        "She rises to greet the daughter at the door.",
-        "She reaches for a hand that is not there.",
-        "She takes the room by the shoulders to look at it."
+    "tier": 2,
+    "intro": "She is in the chair. There is a photograph in her lap. There is another on the wall — face away. There is a corner of the room she does not look at.",
+    "room": {
+      "positions": {
+        "door":     { "name": "the door", "prose": "I am at the door. The room smells of dust." },
+        "chair":    { "name": "her chair", "prose": "I am at the chair. She looks at me as if I should know her." },
+        "wall":     { "name": "the wall", "prose": "I am at the wall. The photograph here is turned to face it. There is a name on the back, in pencil." },
+        "corner":   { "name": "the daughter's corner", "prose": "I am at the corner she does not look at. The chair here is small. The pillow has been mended." }
+      },
+      "edges": [["door","chair"],["chair","wall"],["chair","corner"],["wall","corner"],["door","corner"]],
+      "items": [
+        { "id": "photograph_lap", "name": "the photograph", "startAt": "chair", "carryable": true }
       ],
-      "hold": [
-        "She waits in the chair. She has been waiting.",
-        "She holds the photograph in her lap.",
-        "She listens for footsteps in the corridor."
-      ],
-      "yield": [
-        "She thanks the orderly for the visit.",
-        "She sets the photograph down.",
-        "She turns her face to the window."
-      ]
+      "playerStart": "door",
+      "patientStart": "chair",
+      "patientPattern": { "type": "follow_item", "item": "photograph_lap" },
+      "turnLimit": 8,
+      "playerComposureMax": 7
     },
+    "actions": [
+      {
+        "id": "take_photograph",
+        "at": "chair",
+        "requires": { "patientAt": "chair", "itemAtPlayer": "photograph_lap" },
+        "label": "Take the photograph from her lap.",
+        "voice": "She lets me. ~~She does not know whose it is.~~ She watches my hands.",
+        "effect": { "pickup": "photograph_lap" }
+      },
+      {
+        "id": "place_photograph_corner",
+        "at": "corner",
+        "requires": { "carrying": "photograph_lap" },
+        "label": "Lay the photograph on the small chair.",
+        "voice": "I lay the photograph face-up on the small chair. The pillow has been mended. ~~Many times.~~",
+        "effect": { "drop": "photograph_lap", "patientMoveTo": "corner" }
+      },
+      {
+        "id": "say_the_name",
+        "at": "corner",
+        "requires": { "patientAt": "corner", "itemAt": { "photograph_lap": "corner" } },
+        "label": "Say the daughter's name.",
+        "voice": "I read the pencil from the back of the wall photograph. She mouths it after me. She mouths it ~~once~~ again.",
+        "effect": "win"
+      },
+      {
+        "id": "read_wall",
+        "at": "wall",
+        "label": "Read the back of the photograph on the wall.",
+        "voice": "The name on the back is written in pencil. ~~It is her own handwriting.~~",
+        "effect": "narrative",
+        "once": true
+      },
+      {
+        "id": "thank_her",
+        "at": "chair",
+        "requires": { "patientAt": "chair" },
+        "label": "Thank her for the visit.",
+        "voice": "She thanks me back. She says my name. ~~She gives me the orderly's.~~",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
     "signature": {
-      "onWin": "I sit in the chair across from hers. She tells me about her daughter. I do not correct her.",
+      "onWin": "I sit in the small chair across from hers. She tells me about her daughter. I do not correct her.",
       "onLoss": "She has called me by a name. I do not know whose. ~~I answer to it.~~"
-    },
-    "tier": 2
-  },
-  "Frostfin": {
-    "species": "Frostfin",
-    "displayName": "[Frostfin]",
-    "subtitle": "She was found on the bench after.",
-    "notes": [
-      "Patient was located on the bench outside the train station.",
-      "She had been there since her ~~husband~~ son said he would come.",
-      "Her hands have not warmed since. **Staff do not hold them long.**"
-    ],
-    "composure": 12,
-    "strength": 0.85,
-    "fixation": {
-      "type": "pull_drain",
-      "hint": "The wait takes from the room while she sits in it."
-    },
-    "tells": {
-      "press": [
-        "She looks at the door, sharply, for the first time.",
-        "She rises from the bench.",
-        "She steps forward into the empty corridor."
-      ],
-      "hold": [
-        "She sits where she sat.",
-        "She does not look up when the door opens.",
-        "Her hands are folded on her bag."
-      ],
-      "yield": [
-        "She sets her bag on the floor.",
-        "She tucks the ticket back into her glove.",
-        "She returns to the seat she had."
-      ]
-    },
-    "signature": {
-      "onWin": "She lets me sit. She lets me ~~go~~ stay with her.",
-      "onLoss": "I have begun to wait with her. The bench is cold against my hands."
-    },
-    "tier": 3
-  },
-  "Charnel": {
-    "species": "Charnel",
-    "displayName": "[Charnel]",
-    "subtitle": "She did not stop when staff approached.",
-    "notes": [
-      "Subject was observed approaching the entrance for [[3]] days.",
-      "She walked the length of the road. The road is not paved.",
-      "Has not sat down since admission. ~~Refuses.~~ Cannot."
-    ],
-    "composure": 11,
-    "strength": 1.25,
-    "fixation": {
-      "type": "climb_on_clash",
-      "hint": "Every meeting moves her closer. She does not lose ground."
-    },
-    "tells": {
-      "press": [
-        "She steps into the room without slowing.",
-        "She walks through the chair instead of around it.",
-        "Her hands are open at her sides."
-      ],
-      "hold": [
-        "She stands. She does not lean.",
-        "She turns to face me without changing speed.",
-        "Her weight is forward."
-      ],
-      "yield": [
-        "She slows for the first time today.",
-        "She lets the orderly pass between us.",
-        "She turns her body half away."
-      ]
-    },
-    "signature": {
-      "onWin": "I walk with her to the bench. She does not sit. She rests her hand on it.",
-      "onLoss": "She walks past me. I hear her continue. !!I do not turn.!!"
-    },
-    "tier": 3
+    }
   },
   "Pyrelord": {
     "species": "Pyrelord",
@@ -387,34 +285,261 @@
       "Family report he has been deceased since ~~1986~~ longer.",
       "Daughters visit. He **knows their names**."
     ],
-    "composure": 13,
-    "strength": 1.15,
-    "fixation": {
-      "type": "mirror",
-      "hint": "He answers in kind. Whatever is brought into the room, he ~~returns~~ matches."
-    },
-    "tells": {
-      "press": [
-        "He rises from the chair without using his hands.",
-        "He extends the cane like a baton.",
-        "He addresses me by my father's title."
+    "tier": 3,
+    "intro": "He stands at the head of the dining table. The chairs are set. The cane is leaning against the sideboard. He is waiting to be seated. !!He is waiting for someone to sit first.!!",
+    "room": {
+      "positions": {
+        "door":        { "name": "the door", "prose": "I am at the door. He has not turned to face me." },
+        "head_table":  { "name": "the head of the table", "prose": "I am at the head of the table. The chair is large. ~~It is occupied.~~" },
+        "side_chair":  { "name": "the side chair", "prose": "I am at the side chair. The setting in front of me is for a daughter." },
+        "foot_table":  { "name": "the foot of the table", "prose": "I am at the foot of the table. The chair faces him." },
+        "sideboard":   { "name": "the sideboard", "prose": "I am at the sideboard. The cane is here. ~~The carving knife.~~" }
+      },
+      "edges": [
+        ["door","side_chair"],["side_chair","foot_table"],["foot_table","head_table"],
+        ["head_table","sideboard"],["sideboard","side_chair"],["door","sideboard"]
       ],
-      "hold": [
-        "He returns to the head of the table.",
-        "He folds his hands on the family Bible.",
-        "He waits at the head of the room."
+      "items": [
+        { "id": "cane", "name": "the cane", "startAt": "sideboard", "carryable": true }
       ],
-      "yield": [
-        "He inclines his head once.",
-        "He passes the carving knife to the staff.",
-        "He allows the daughter to leave first."
-      ]
+      "playerStart": "door",
+      "patientStart": "head_table",
+      "patientPattern": { "type": "stay_unless_seated", "seatTrigger": "foot_table", "moveTo": "side_chair" },
+      "turnLimit": 9,
+      "playerComposureMax": 7
     },
+    "actions": [
+      {
+        "id": "sit_foot",
+        "at": "foot_table",
+        "requires": { "patientAt": "head_table" },
+        "label": "Sit at the foot of the table.",
+        "voice": "I take the seat. He inclines his head. He waits for me to address him first. ~~The seat is warm.~~",
+        "effect": "narrative"
+      },
+      {
+        "id": "take_cane",
+        "at": "sideboard",
+        "requires": { "itemAtPlayer": "cane" },
+        "label": "Take the cane from the sideboard.",
+        "voice": "I lift it. The weight is familiar. ~~My father's.~~",
+        "effect": { "pickup": "cane" }
+      },
+      {
+        "id": "offer_cane",
+        "at": "head_table",
+        "requires": { "patientAt": "side_chair", "carrying": "cane" },
+        "label": "Hand him the cane.",
+        "voice": "He takes it. He sets it across the table. He nods. ~~He hands me the carving knife.~~",
+        "effect": "win"
+      },
+      {
+        "id": "carve_air",
+        "at": "head_table",
+        "requires": { "patientAt": "head_table" },
+        "label": "Address him directly.",
+        "voice": "He returns my address with my father's title. ~~He knows my name.~~",
+        "effect": { "composure": -2 },
+        "once": true
+      }
+    ],
     "signature": {
       "onWin": "I take the seat he leaves. He nods. The daughters have **his eyes**.",
       "onLoss": "He keeps the seat. The room has been his since before I came. ~~Before I was.~~"
+    }
+  },
+  "Charnel": {
+    "species": "Charnel",
+    "displayName": "[Charnel]",
+    "subtitle": "She did not stop when staff approached.",
+    "notes": [
+      "Subject was observed approaching the entrance for [[3]] days.",
+      "She walked the length of the road. The road is not paved.",
+      "Has not sat down since admission. ~~Refuses.~~ Cannot."
+    ],
+    "tier": 3,
+    "intro": "She is walking down a corridor. She does not stop. Each beat she is closer to the desk at the end. !!She must reach the desk.!! Or she must be made to stop.",
+    "room": {
+      "positions": {
+        "entrance": { "name": "the entrance", "prose": "I am at the entrance. The corridor is long behind me." },
+        "mid":      { "name": "the middle of the corridor", "prose": "I am at the middle. The wall on the left has a bench in it." },
+        "bench":    { "name": "the alcove with the bench", "prose": "I am at the bench. It is fastened to the wall. ~~Someone wanted it kept.~~" },
+        "desk":     { "name": "the desk at the end", "prose": "I am at the desk at the end of the corridor. The chair behind it is empty." }
+      },
+      "edges": [["entrance","mid"],["mid","bench"],["mid","desk"]],
+      "items": [],
+      "playerStart": "mid",
+      "patientStart": "entrance",
+      "patientPattern": { "type": "toward", "target": "desk" },
+      "turnLimit": 6,
+      "playerComposureMax": 6,
+      "loseIf": { "patientAt": "desk" }
     },
-    "tier": 3
+    "actions": [
+      {
+        "id": "stand_in_corridor",
+        "at": "mid",
+        "requires": { "patientAt": "entrance" },
+        "label": "Stand in the middle of the corridor.",
+        "voice": "I block her path. She does not slow. ~~She walks through me.~~ She walks around me.",
+        "effect": { "patientMoveTo": "entrance", "composure": -1 }
+      },
+      {
+        "id": "wait_at_bench",
+        "at": "bench",
+        "label": "Wait beside the bench.",
+        "voice": "I rest my hand on the back of the bench. She is still moving. The bench is the only place she has not been told to sit.",
+        "effect": "narrative"
+      },
+      {
+        "id": "guide_to_bench",
+        "at": "bench",
+        "requires": { "patientAt": "mid" },
+        "label": "Reach out as she passes the bench.",
+        "voice": "I do not pull. I open my hand. She slows for the first time today. ~~She sits.~~ She rests her palm on it.",
+        "effect": "win"
+      },
+      {
+        "id": "address_her",
+        "at": "mid",
+        "requires": { "patientAt": "mid" },
+        "label": "Address her by name.",
+        "voice": "She does not stop. ~~She does not know her name.~~",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
+    "signature": {
+      "onWin": "She rests her hand on the bench. She does not sit. She does not need to.",
+      "onLoss": "She walks past me. I hear her continue. !!I do not turn.!!"
+    }
+  },
+  "Frostfin": {
+    "species": "Frostfin",
+    "displayName": "[Frostfin]",
+    "subtitle": "She was found on the bench after.",
+    "notes": [
+      "Patient was located on the bench outside the train station.",
+      "She had been there since her ~~husband~~ son said he would come.",
+      "Her hands have not warmed since. **Staff do not hold them long.**"
+    ],
+    "tier": 3,
+    "intro": "She is on the bench. She is waiting. Her hands are folded over a small bag. Each turn she does not move, the cold of the platform deepens. ~~My hands grow colder when I am near her.~~",
+    "room": {
+      "positions": {
+        "platform_north": { "name": "the north end of the platform", "prose": "I am at the north end. The board still says the train is on time. The time is wrong." },
+        "bench":          { "name": "her bench",  "prose": "I am at her bench. Her hands are folded. ~~Mine grow cold.~~" },
+        "kiosk":          { "name": "the closed kiosk",  "prose": "I am at the kiosk. The glass is dirty. There is a coat folded under the counter. It is hers." },
+        "platform_south": { "name": "the south end of the platform", "prose": "I am at the south end. The clock has not moved." }
+      },
+      "edges": [["platform_north","bench"],["bench","kiosk"],["kiosk","platform_south"],["platform_north","kiosk"]],
+      "items": [
+        { "id": "coat", "name": "the coat", "startAt": "kiosk", "carryable": true }
+      ],
+      "playerStart": "platform_north",
+      "patientStart": "bench",
+      "patientPattern": { "type": "still" },
+      "turnLimit": 7,
+      "playerComposureMax": 7,
+      "drainAdjacent": { "amount": 1 }
+    },
+    "actions": [
+      {
+        "id": "take_coat",
+        "at": "kiosk",
+        "requires": { "itemAtPlayer": "coat" },
+        "label": "Take her coat from under the counter.",
+        "voice": "It is folded the way she folds clothes. ~~For someone who would come for them.~~",
+        "effect": { "pickup": "coat" }
+      },
+      {
+        "id": "drape_coat",
+        "at": "bench",
+        "requires": { "carrying": "coat", "patientAt": "bench" },
+        "label": "Drape the coat over her shoulders.",
+        "voice": "She lets me. ~~Her hands warm where mine touch them.~~ She lets me sit.",
+        "effect": "win"
+      },
+      {
+        "id": "sit_with_her",
+        "at": "bench",
+        "requires": { "patientAt": "bench" },
+        "label": "Sit on the bench beside her.",
+        "voice": "I sit. She does not turn. !!My hands are colder than they were.!!",
+        "effect": { "composure": -2 },
+        "once": true
+      },
+      {
+        "id": "check_board",
+        "at": "platform_north",
+        "label": "Read the arrivals board.",
+        "voice": "The train is on time. The time it reads is from yesterday. ~~Or the year before.~~",
+        "effect": "narrative",
+        "once": true
+      }
+    ],
+    "signature": {
+      "onWin": "She lets me sit. She lets me ~~go~~ stay with her. The cold lifts a little.",
+      "onLoss": "I have begun to wait with her. The bench is cold against my hands. ~~He has not arrived yet.~~"
+    }
+  },
+  "Rivergeist": {
+    "species": "Rivergeist",
+    "displayName": "[Rivergeist]",
+    "subtitle": "She is found in the same hallway each time.",
+    "notes": [
+      "Patient has attempted to leave the ward seventeen times this week.",
+      "Each attempt ends in the east hallway. She does not remember the others.",
+      "Asked where she was going. Answered: !!the same place she came from.!!"
+    ],
+    "tier": 2,
+    "intro": "She walks the corridor. She comes from the east. She moves to the corner. She turns. She moves back. Each loop she does not remember the last.",
+    "room": {
+      "positions": {
+        "east":   { "name": "the east end",   "prose": "I am at the east end of the corridor. There is a stairwell, locked." },
+        "corner": { "name": "the corner",     "prose": "I am at the corner where she always turns. There is nothing here but the wall." },
+        "alcove": { "name": "the small alcove",     "prose": "I am in the alcove. There is a chair here. ~~It has not been used.~~" },
+        "west":   { "name": "the west end",   "prose": "I am at the west end. The corridor is open. ~~She does not come this far.~~" }
+      },
+      "edges": [["east","corner"],["corner","alcove"],["corner","west"],["alcove","west"]],
+      "items": [],
+      "playerStart": "west",
+      "patientStart": "east",
+      "patientPattern": { "type": "cycle", "sequence": ["east","corner","alcove","corner","east"] },
+      "turnLimit": 9,
+      "playerComposureMax": 7
+    },
+    "actions": [
+      {
+        "id": "wait_in_alcove",
+        "at": "alcove",
+        "requires": { "patientAt": "alcove" },
+        "label": "Be already sitting in the alcove when she arrives.",
+        "voice": "She stops at the alcove. ~~She does not remember being here before.~~ She does not remember me either. She accepts the chair across from mine.",
+        "effect": "win"
+      },
+      {
+        "id": "walk_with_her",
+        "at": "corner",
+        "requires": { "patientAt": "corner" },
+        "label": "Turn at the corner with her.",
+        "voice": "I turn when she turns. ~~For seventeen turns.~~ She does not notice me yet.",
+        "effect": "narrative"
+      },
+      {
+        "id": "address_her",
+        "at": "east",
+        "requires": { "patientAt": "east" },
+        "label": "Address her at the stairwell.",
+        "voice": "She does not remember the stairwell. ~~Or the door beyond it.~~ She turns west again.",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
+    "signature": {
+      "onWin": "She sits with me. We do not talk. The corner is just a corner now.",
+      "onLoss": "She walks past me for the eighteenth time. ~~She will walk past me for the nineteenth.~~"
+    }
   },
   "Bloomback": {
     "species": "Bloomback",
@@ -425,34 +550,123 @@
       "He prunes it. He calls it by !!plant names!!.",
       "Smells of [[8]] when the room is closed."
     ],
-    "composure": 11,
-    "strength": 1.1,
-    "fixation": {
-      "type": "grow_each_beat",
-      "hint": "Whatever begins in him is larger by the next time the door opens."
-    },
-    "tells": {
-      "press": [
-        "He pulls the bandage away from the wound.",
-        "He turns the wound toward me.",
-        "He waters it with the cup at the bedside."
+    "tier": 3,
+    "intro": "He sits in the chair. The wound is on his arm, uncovered. There is a basin of water beside him. There is a roll of clean linen on the counter. Each turn the wound grows. Each turn the room is harder to be in.",
+    "room": {
+      "positions": {
+        "door":   { "name": "the door",  "prose": "I am at the door. The smell is thick at the threshold." },
+        "chair":  { "name": "his chair", "prose": "I am at the chair. The wound is uncovered. He looks pleased." },
+        "basin":  { "name": "the basin", "prose": "I am at the basin. The water has not been changed today." },
+        "counter":{ "name": "the counter", "prose": "I am at the counter. The roll of linen is here. Beside it, a pruning knife. ~~It is not for him.~~" }
+      },
+      "edges": [["door","chair"],["chair","basin"],["basin","counter"],["counter","door"]],
+      "items": [
+        { "id": "linen", "name": "the clean linen", "startAt": "counter", "carryable": true }
       ],
-      "hold": [
-        "He tends to the wound. He hums.",
-        "He covers it carefully with the linen.",
-        "He asks me not to look until it is open."
-      ],
-      "yield": [
-        "He sets the trowel down.",
-        "He pulls the sleeve over the wound.",
-        "He takes the cup back from me."
-      ]
+      "playerStart": "door",
+      "patientStart": "chair",
+      "patientPattern": { "type": "still" },
+      "turnLimit": 7,
+      "playerComposureMax": 7,
+      "drainEachTurn": { "amount": 1, "after": 2 }
     },
+    "actions": [
+      {
+        "id": "take_linen",
+        "at": "counter",
+        "requires": { "itemAtPlayer": "linen" },
+        "label": "Take the linen.",
+        "voice": "I take it. It is folded fresh.",
+        "effect": { "pickup": "linen" }
+      },
+      {
+        "id": "wash_at_basin",
+        "at": "basin",
+        "requires": { "carrying": "linen" },
+        "label": "Dampen the linen at the basin.",
+        "voice": "I do not use his water. I rinse the linen until it is clean. ~~Cleaner.~~",
+        "effect": { "tag": "linen_wet" }
+      },
+      {
+        "id": "cover_wound",
+        "at": "chair",
+        "requires": { "patientAt": "chair", "carrying": "linen", "tag": "linen_wet" },
+        "label": "Cover the wound with the wet linen.",
+        "voice": "He lets me. He does not look pleased. ~~He says it was almost ready.~~ The smell lifts.",
+        "effect": "win"
+      },
+      {
+        "id": "look_at_wound",
+        "at": "chair",
+        "requires": { "patientAt": "chair" },
+        "label": "Look at what he has grown.",
+        "voice": "!!It is what he said it is.!! He smiles. ~~He says my name to it.~~",
+        "effect": { "composure": -2 },
+        "once": true
+      }
+    ],
     "signature": {
-      "onWin": "He lets me see what he has grown. !!It says my name back.!!",
+      "onWin": "He lets me cover it. The smell lifts. ~~Some of it goes with me.~~",
       "onLoss": "I have left part of myself in his room. He has potted it ~~carefully~~ already."
+    }
+  },
+  "Tidewhelp": {
+    "species": "Tidewhelp",
+    "displayName": "[Tidewhelp]",
+    "subtitle": "His brother insists it is him.",
+    "notes": [
+      "Subject was returned to family after [[5]] missing.",
+      "The brother says it is him. The brother is sure.",
+      "Does not eat what the family eats. ~~Will not.~~ Does not appear to need to."
+    ],
+    "tier": 2,
+    "intro": "He stands in front of the mirror. He moves to where I am. ~~He does as I do.~~ The kitchen table is set. The brother's place is set.",
+    "room": {
+      "positions": {
+        "door":     { "name": "the door",     "prose": "I am at the door. The kitchen is bright behind it." },
+        "table":    { "name": "the table",    "prose": "I am at the table. The brother's place is set. ~~The seat is warm.~~" },
+        "mirror":   { "name": "the mirror",   "prose": "I am at the mirror. My reflection is the wrong one." },
+        "doorway":  { "name": "the doorway to the hall", "prose": "I am in the doorway. The hall is dim. The brother's room is there." }
+      },
+      "edges": [["door","table"],["table","mirror"],["mirror","doorway"],["doorway","table"]],
+      "items": [],
+      "playerStart": "door",
+      "patientStart": "mirror",
+      "patientPattern": { "type": "mirror_player" },
+      "turnLimit": 8,
+      "playerComposureMax": 7
     },
-    "tier": 3
+    "actions": [
+      {
+        "id": "sit_at_table",
+        "at": "table",
+        "requires": { "patientAt": "table" },
+        "label": "Take the brother's seat.",
+        "voice": "I sit. He sits across. We are not eating. He sets the brother's name down beside me.",
+        "effect": "win"
+      },
+      {
+        "id": "look_in_mirror",
+        "at": "mirror",
+        "requires": { "patientAt": "mirror" },
+        "label": "Stand at the mirror beside him.",
+        "voice": "Two reflections. ~~Three.~~ The brother's is the one I cannot find.",
+        "effect": { "composure": -1 },
+        "once": true
+      },
+      {
+        "id": "enter_hall",
+        "at": "doorway",
+        "label": "Step into the doorway.",
+        "voice": "The hall is dim. The brother's room is at the end. ~~Both of them are.~~",
+        "effect": "narrative",
+        "once": true
+      }
+    ],
+    "signature": {
+      "onWin": "I do not ask which he is. He thanks me for it. ~~The brother does too.~~",
+      "onLoss": "He has my voice in his now. ~~The family will be glad.~~"
+    }
   },
   "Glimmerfox": {
     "species": "Glimmerfox",
@@ -463,680 +677,64 @@
       "He watched. The rest of the family looked away. He ~~has not~~ cannot stop.",
       "Subject sits at his feet. He pets it. **It has been forty years.**"
     ],
-    "composure": 9,
-    "strength": 1.1,
-    "fixation": {
-      "type": "watch_no_lie",
-      "hint": "He does not look away. His face is the same one his hand makes."
-    },
-    "tells": {
-      "press": [
-        "He stands without taking his eyes from me.",
-        "He raises a hand at the level of his shoulder.",
-        "He walks into the road without slowing."
-      ],
-      "hold": [
-        "He sits where he sits. The thing at his feet does not move.",
-        "He pets it once. His eyes do not leave mine.",
-        "He keeps his hand near it. It is not warm."
-      ],
-      "yield": [
-        "He turns his face from the road.",
-        "He releases its collar.",
-        "He closes his eyes for half a beat."
-      ]
-    },
-    "signature": {
-      "onWin": "He tells me what he saw. I do not interrupt him. ~~It takes a long time.~~",
-      "onLoss": "I am sitting with him. The thing at our feet is breathing. ~~I think it is.~~"
-    },
     "tier": 3,
-    "ward": {
-      "name": "Witness",
-      "desc": "The patient's next 2 tells are truthful — they cannot mislead. Use once.",
-      "voice": "[Glimmerfox] sits at the corner of the room. He does not blink.",
-      "effect": "true_tells_2"
+    "intro": "He sits on the curb. The thing at his feet does not move. The road is empty. He does not look at me. He does not blink. !!If I look at him long, my eyes begin to ache.!!",
+    "room": {
+      "positions": {
+        "porch":    { "name": "the porch",      "prose": "I am on the porch. The rest of the family is inside. I can see their shapes through the screen." },
+        "yard":     { "name": "the yard",       "prose": "I am in the yard. The grass is dry. The collar of the thing at his feet is here." },
+        "curb":     { "name": "the curb beside him",  "prose": "I am at the curb beside him. He does not look up. !!The thing does not.!!" },
+        "road":     { "name": "the road",       "prose": "I am in the road. ~~The car is somewhere.~~" }
+      },
+      "edges": [["porch","yard"],["yard","curb"],["curb","road"]],
+      "items": [
+        { "id": "collar", "name": "the collar", "startAt": "yard", "carryable": true }
+      ],
+      "playerStart": "porch",
+      "patientStart": "curb",
+      "patientPattern": { "type": "still" },
+      "turnLimit": 7,
+      "playerComposureMax": 6
+    },
+    "actions": [
+      {
+        "id": "pick_collar",
+        "at": "yard",
+        "requires": { "itemAtPlayer": "collar" },
+        "label": "Pick up the collar.",
+        "voice": "It is small. The leather is soft. ~~There is a name on it I do not know.~~",
+        "effect": { "pickup": "collar" }
+      },
+      {
+        "id": "give_collar",
+        "at": "curb",
+        "requires": { "patientAt": "curb", "carrying": "collar" },
+        "label": "Hand him the collar.",
+        "voice": "He takes it. He puts it on the thing at his feet. ~~The thing does not need it.~~ He blinks for the first time.",
+        "effect": "win"
+      },
+      {
+        "id": "look_at_him",
+        "at": "curb",
+        "requires": { "patientAt": "curb" },
+        "label": "Watch with him.",
+        "voice": "I look where he is looking. ~~I see what he is seeing.~~ My eyes ache.",
+        "effect": { "composure": -2 },
+        "once": true
+      },
+      {
+        "id": "step_into_road",
+        "at": "road",
+        "label": "Step into the road.",
+        "voice": "There is nothing here. ~~The car is somewhere.~~ I step back to the curb.",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
+    "signature": {
+      "onWin": "He puts the collar on it. He blinks. ~~The first time in forty years.~~",
+      "onLoss": "I am sitting beside him. The thing at our feet is breathing. ~~I think it is.~~"
     }
-  },
-  "Brineback": {
-    "species": "Brineback",
-    "displayName": "[Brineback]",
-    "subtitle": "He brought it in himself. We took it from him.",
-    "notes": [
-      "Subject was wrapped in linens when delivered to admissions.",
-      "Patient's husband brought it in. He has been here since.",
-      "He asks after it daily. We tell him she is ~~comfortable~~ kept."
-    ],
-    "composure": 16,
-    "strength": 0.65,
-    "fixation": {
-      "type": "bound_until_low",
-      "hint": "She is kept. She does not open until something has been taken from her."
-    },
-    "tells": {
-      "press": [
-        "Her wrappings begin to give at the shoulder.",
-        "She lifts a hand the husband has not touched in years.",
-        "She turns toward the door as if it is the right door."
-      ],
-      "hold": [
-        "She lies as she has lain.",
-        "The linen is unmoved.",
-        "She is kept where she was kept."
-      ],
-      "yield": [
-        "She is settled back into the wrap.",
-        "The husband adjusts the corner.",
-        "She is given another pillow."
-      ]
-    },
-    "signature": {
-      "onWin": "I help the husband fold the linens. He says her name. I say it after him.",
-      "onLoss": "I am wrapped in the linens beside her. The husband says he will be ~~back~~ here."
-    },
-    "tier": 3
-  },
-  "Wraithfin": {
-    "species": "Wraithfin",
-    "displayName": "[Wraithfin]",
-    "subtitle": "She insists she is the other one.",
-    "notes": [
-      "Patient was admitted alone. She insists she is the other one.",
-      "Her sister's death certificate is on file. ~~Her~~ the patient's signature is on it.",
-      "When asked who she is, she answers her sister's name. !!Each time. The same.!!"
-    ],
-    "composure": 11,
-    "strength": 1.05,
-    "fixation": {
-      "type": "invert_tell",
-      "hint": "Her words are her sister's. Her hands are her own. They do not agree."
-    },
-    "tells": {
-      "press": [
-        "She approaches the mirror as her sister would have.",
-        "She picks up the kettle her sister always picked up.",
-        "She speaks her sister's first word of the morning."
-      ],
-      "hold": [
-        "She sits in her sister's chair.",
-        "She wears her sister's coat.",
-        "She holds her sister's letter without opening it."
-      ],
-      "yield": [
-        "She lets her sister leave the room first.",
-        "She closes her sister's eyes from across the bed.",
-        "She signs her sister's name on the form."
-      ]
-    },
-    "signature": {
-      "onWin": "I call her by her own name. !!She does not answer at first.!!",
-      "onLoss": "She has begun signing me into the form. ~~I sign back.~~"
-    },
-    "tier": 4
-  },
-  "Shadowmaw": {
-    "species": "Shadowmaw",
-    "displayName": "[Shadowmaw]",
-    "subtitle": "He has been quoting us back.",
-    "notes": [
-      "Patient occupies the room nearest the staff lounge.",
-      "He has begun returning to staff what they spoke of yesterday.",
-      "He uses our names. !!We are not sure when he learned them.!!"
-    ],
-    "composure": 13,
-    "strength": 1.0,
-    "fixation": {
-      "type": "counter_last",
-      "hint": "He has been listening. Whatever was said to him, he ~~says back~~ answers."
-    },
-    "tells": {
-      "press": [
-        "He repeats what the orderly said this morning.",
-        "He says my own name back at me, slowly.",
-        "He uses a phrase from my admission interview."
-      ],
-      "hold": [
-        "He waits at the threshold of the staff lounge.",
-        "He has been quoting yesterday's chart back to itself.",
-        "He keeps the radio at the same volume as before."
-      ],
-      "yield": [
-        "He goes quiet for the length of a hallway.",
-        "He returns to his room without being asked.",
-        "He stops mid-sentence and folds his hands."
-      ]
-    },
-    "signature": {
-      "onWin": "He says something of mine. I say it back to him. It is the first thing either of us said this week.",
-      "onLoss": "He has been saying me back to the orderlies. ~~They believe him.~~"
-    },
-    "tier": 4
-  },
-  "Voidling": {
-    "species": "Voidling",
-    "displayName": "[Voidling]",
-    "subtitle": "He kept it. Quiet. Mostly.",
-    "notes": [
-      "Patient sealed it in his bedroom closet for thirty-six years.",
-      "At admission it was smaller than a fist. !!It has grown since.!!",
-      "He calls it by ~~his wife's~~ the name they would have given."
-    ],
-    "composure": 12,
-    "strength": 1.05,
-    "fixation": {
-      "type": "grow_each_beat",
-      "hint": "Whatever began with him is **bigger** by the next breath."
-    },
-    "tells": {
-      "press": [
-        "He opens the door of the closet a little.",
-        "He calls it by the name. The room dims.",
-        "He lets it ~~speak~~ answer once."
-      ],
-      "hold": [
-        "He keeps the door of the closet closed.",
-        "He hums to it. It does not need to answer.",
-        "He stands between the closet and the rest of the room."
-      ],
-      "yield": [
-        "He locks the closet again.",
-        "He leaves the room without looking at it.",
-        "He closes the lid of the box."
-      ]
-    },
-    "signature": {
-      "onWin": "He lets me hear it. !!It is the size of the room.!! He thanks me. ~~So does it.~~",
-      "onLoss": "It has begun to call me by the name. ~~I hum back.~~"
-    },
-    "tier": 4
-  },
-  "Umbragale": {
-    "species": "Umbragale",
-    "displayName": "[Umbragale]",
-    "subtitle": "She draws it on the wall every morning.",
-    "notes": [
-      "Patient draws the same house every morning. Same windows. Same number on the door.",
-      "She insists it ~~comes~~ has come for her.",
-      "The address she gave matches no facility on record. The house !!is at the address!!."
-    ],
-    "composure": 12,
-    "strength": 1.1,
-    "fixation": {
-      "type": "anchor_press",
-      "hint": "Every fourth time the wall is finished, she begins again."
-    },
-    "tells": {
-      "press": [
-        "She finishes the door. She steps into the corridor.",
-        "She knocks on the wall. The wall knocks back.",
-        "She speaks the address of the house she drew."
-      ],
-      "hold": [
-        "She is still drawing the windows.",
-        "She is still counting the steps from the door.",
-        "She traces the same window twice."
-      ],
-      "yield": [
-        "She sets the pencil down.",
-        "She erases the door with her sleeve.",
-        "She turns from the wall."
-      ]
-    },
-    "signature": {
-      "onWin": "I knock on the wall once. The wall waits. I leave with her.",
-      "onLoss": "The address on her wall is mine. ~~It always was.~~"
-    },
-    "tier": 4
-  },
-  "Mireling": {
-    "species": "Mireling",
-    "displayName": "[Mireling]",
-    "subtitle": "There is no pond on the grounds.",
-    "notes": [
-      "Patient asks staff about the pond on the grounds. There is no pond.",
-      "She specifies a ~~stone~~ statue at the edge. None on file.",
-      "Family report she put **something** in a pond, once. They will not say what."
-    ],
-    "composure": 12,
-    "strength": 1.0,
-    "fixation": {
-      "type": "pull_drain",
-      "hint": "The room is colder when she is in it. It does not warm again."
-    },
-    "tells": {
-      "press": [
-        "She walks toward the window as if it is a pond.",
-        "She kneels by the foot of the bed.",
-        "She reaches into the basin."
-      ],
-      "hold": [
-        "She watches the water in the basin without touching.",
-        "She kneels at the edge of the floor.",
-        "She listens for the surface."
-      ],
-      "yield": [
-        "She lets the basin drain.",
-        "She steps away from the window.",
-        "She closes her eyes against the reflection."
-      ]
-    },
-    "signature": {
-      "onWin": "She tells me the name. I do not write it down. She thanks me for ~~not knowing~~ asking.",
-      "onLoss": "I have walked into the pond with her. The pond is not on the grounds. ~~It is, now.~~"
-    },
-    "tier": 4
-  },
-  "Aurabeast": {
-    "species": "Aurabeast",
-    "displayName": "[Aurabeast]",
-    "subtitle": "He used to work in records.",
-    "notes": [
-      "Patient was a records clerk for thirty-one years.",
-      "He continues to take notes. The page is blank.",
-      "Staff have begun to !!find their words!! in his hand."
-    ],
-    "composure": 11,
-    "strength": 0.95,
-    "fixation": {
-      "type": "forget_tell",
-      "hint": "His notes do not match what he has said. ~~Or done.~~"
-    },
-    "tells": {
-      "press": [
-        "He underlines a name on the page.",
-        "He turns the file toward me, open.",
-        "He uses my middle name. ~~I have not given it.~~"
-      ],
-      "hold": [
-        "He files the page back into the cabinet.",
-        "He stamps the corner. The stamp is empty.",
-        "He keeps the pen down."
-      ],
-      "yield": [
-        "He hands me the pen.",
-        "He closes the file.",
-        "He looks at the cabinet without opening it."
-      ]
-    },
-    "signature": {
-      "onWin": "I take the page. The name is mine. I keep it.",
-      "onLoss": "He has filed me. The file goes !!somewhere I cannot reach!!."
-    },
-    "tier": 3,
-    "ward": {
-      "name": "Cross-reference",
-      "desc": "Reveal the patient's fixation, even if you have not encountered them enough times to know it. Use once.",
-      "voice": "[Aurabeast] turns the file open to the page that says what they are.",
-      "effect": "reveal_fixation"
-    }
-  },
-  "Halowyrm": {
-    "species": "Halowyrm",
-    "displayName": "[Halowyrm]",
-    "subtitle": "Staff use less light in her ward.",
-    "notes": [
-      "Subject emits visible light from the chest cavity.",
-      "Lights in her ward are kept dim. ~~For her~~ for the staff.",
-      "Family ask what is in there. We have **not** said."
-    ],
-    "composure": 14,
-    "strength": 1.1,
-    "fixation": {
-      "type": "anchor_press",
-      "hint": "The light gathers. Then it ~~breaks~~ leaves."
-    },
-    "tells": {
-      "press": [
-        "The light at her chest brightens.",
-        "She steps forward, and the shadow follows.",
-        "She opens the front of the gown."
-      ],
-      "hold": [
-        "The light stays at her chest.",
-        "She does not move from the corner.",
-        "She presses her hands over the source."
-      ],
-      "yield": [
-        "She lowers the light against her body.",
-        "She closes the gown.",
-        "She turns her chest from me."
-      ]
-    },
-    "signature": {
-      "onWin": "She lets me see. I do not look away. The light is **gentle** when looked at directly.",
-      "onLoss": "I have been lit from inside. ~~The staff prefer it.~~"
-    },
-    "tier": 4
-  },
-  "Dawnstag": {
-    "species": "Dawnstag",
-    "displayName": "[Dawnstag]",
-    "subtitle": "His mother is also here.",
-    "notes": [
-      "Patient is the eldest of [[3]].",
-      "His mother is housed two doors down. She does not know him.",
-      "He was named after his ~~grandfather~~ uncle. The uncle is also here."
-    ],
-    "composure": 10,
-    "strength": 1.0,
-    "fixation": {
-      "type": "echo_last",
-      "hint": "He inherits. Whatever was just done, he ~~does~~ continues."
-    },
-    "tells": {
-      "press": [
-        "He stands as his father stood.",
-        "He uses the uncle's first word at the door.",
-        "He raises a hand the way his mother used to."
-      ],
-      "hold": [
-        "He sits where each of them sat in turn.",
-        "He keeps the family name on the chart.",
-        "He waits for his mother to recognize him."
-      ],
-      "yield": [
-        "He folds the chart away.",
-        "He lowers his hand.",
-        "He lets his mother pass without speaking."
-      ]
-    },
-    "signature": {
-      "onWin": "He lets me speak his name. ~~Not the family's.~~ Just his.",
-      "onLoss": "I have been given a name from his line. ~~I answer to it.~~"
-    },
-    "tier": 3
-  },
-  "Loamback": {
-    "species": "Loamback",
-    "displayName": "[Loamback]",
-    "subtitle": "She has been waiting since 1981.",
-    "notes": [
-      "Patient has been awaiting transfer to [[7]] since 1981.",
-      "She does not ask after it. She knows the number she is.",
-      "When called by another's name, she ~~corrects~~ accepts it."
-    ],
-    "composure": 16,
-    "strength": 0.6,
-    "fixation": {
-      "type": "locked_hold",
-      "hint": "She has waited. She will continue. The room is the room."
-    },
-    "tells": {
-      "press": [],
-      "hold": [
-        "She is in the chair.",
-        "She has not asked the time today.",
-        "She folds her hands the way she folded them last year."
-      ],
-      "yield": []
-    },
-    "signature": {
-      "onWin": "She thanks me for the form. She does not look at it. I file it. ~~Somewhere.~~",
-      "onLoss": "I have begun waiting. The year on the form is empty."
-    },
-    "tier": 2
-  },
-  "Nightcreep": {
-    "species": "Nightcreep",
-    "displayName": "[Nightcreep]",
-    "subtitle": "Whoever brought her did not sign in.",
-    "notes": [
-      "Subject was logged at the front desk after hours.",
-      "Whoever brought her did not sign in. They left her in the chair.",
-      "She refuses to identify them. ~~Or cannot.~~ The chair is !!still warm!!."
-    ],
-    "composure": 10,
-    "strength": 1.15,
-    "fixation": {
-      "type": "invert_tell",
-      "hint": "Her hands and her voice say different things. Both are true. ~~Neither.~~"
-    },
-    "tells": {
-      "press": [
-        "She rises from the chair without using her hands.",
-        "She tells me where the person waiting outside is sitting.",
-        "She extends a finger toward me, slowly."
-      ],
-      "hold": [
-        "She remains in the chair.",
-        "The chair beside her is occupied. ~~It is not.~~",
-        "She does not turn her head when the door opens."
-      ],
-      "yield": [
-        "She rests her hand on the empty chair next to her.",
-        "She sets her purse on her lap.",
-        "She closes her eyes against the corridor."
-      ]
-    },
-    "signature": {
-      "onWin": "She tells me a name. ~~I do not check the log.~~",
-      "onLoss": "I have been left in the chair beside her. The chair is warm. ~~Both are.~~"
-    },
-    "tier": 4
-  },
-  "Coralhusk": {
-    "species": "Coralhusk",
-    "displayName": "[Coralhusk]",
-    "subtitle": "She responds to her name. Nothing else.",
-    "notes": [
-      "Subject responds when called by her given name.",
-      "No further verbal output observed in [[3]] months.",
-      "Family ask if she is still in there. We **say yes**."
-    ],
-    "composure": 10,
-    "strength": 0.85,
-    "fixation": {
-      "type": "compulsion_press",
-      "hint": "Once she has begun, she does not pause. Each gesture ~~asks for~~ keeps the next."
-    },
-    "tells": {
-      "press": [
-        "She turns her head when her name is called.",
-        "She speaks the first syllable of her name.",
-        "Her eyes meet mine."
-      ],
-      "hold": [
-        "She does not answer to anything else.",
-        "Her face is the face of the chart.",
-        "She is still. She is still inside."
-      ],
-      "yield": [
-        "She turns her face to the wall.",
-        "She does not respond to the second call.",
-        "She closes her eyes against the visitor."
-      ]
-    },
-    "signature": {
-      "onWin": "I call her by her name. ~~The whole one.~~ She answers.",
-      "onLoss": "She has not answered. The family will not be told ~~yet~~ today."
-    },
-    "tier": 3
-  },
-  "Sproutkin": {
-    "species": "Sproutkin",
-    "displayName": "[Sproutkin]",
-    "subtitle": "Staff have stopped re-stitching.",
-    "notes": [
-      "Subject has reopened the same wound eleven times.",
-      "The bandage is replaced daily. She thanks staff. She **cannot help.**",
-      "When asked why, she answered: ~~it is healing wrong~~ it is healing."
-    ],
-    "composure": 9,
-    "strength": 1.05,
-    "fixation": {
-      "type": "drift_cycle",
-      "hint": "She reopens the same wound. The order of the days is the same."
-    },
-    "tells": {
-      "press": [
-        "She picks at the bandage.",
-        "She pulls the thread.",
-        "She turns the wound toward the room."
-      ],
-      "hold": [
-        "She keeps her hand over the bandage.",
-        "She presses the gauze in place.",
-        "She does not look at the wound."
-      ],
-      "yield": [
-        "She allows the staff to re-stitch.",
-        "She lowers her hand to her lap.",
-        "She turns her arm away."
-      ]
-    },
-    "signature": {
-      "onWin": "She thanks me. She does not pick at it. ~~Today.~~",
-      "onLoss": "I have been bandaged. I do not know who is helping. ~~She is.~~"
-    },
-    "tier": 2
-  },
-  "Vinewyrm": {
-    "species": "Vinewyrm",
-    "displayName": "[Vinewyrm]",
-    "subtitle": "She refuses to use the legs.",
-    "notes": [
-      "Subject is fully ambulatory. Refuses to walk.",
-      "Patient was found in the south corridor. She had crawled from the east. **It took the night.**",
-      "When stood up by orderlies, she ~~sits~~ lowers herself."
-    ],
-    "composure": 11,
-    "strength": 0.95,
-    "fixation": {
-      "type": "refuse_yield",
-      "hint": "She does not give. Whatever was taken from her is no longer in the room."
-    },
-    "tells": {
-      "press": [
-        "She begins to crawl.",
-        "She drags her hand along the wall.",
-        "She moves toward the east corridor."
-      ],
-      "hold": [
-        "She lowers herself when stood up.",
-        "She braces against the orderly's hands.",
-        "She remains where she was."
-      ],
-      "yield": []
-    },
-    "signature": {
-      "onWin": "I crawl with her. The corridor is longer than it was. ~~She is glad.~~",
-      "onLoss": "I have been left in the south corridor. ~~She is east of me.~~"
-    },
-    "tier": 3
-  },
-  "Thornling": {
-    "species": "Thornling",
-    "displayName": "[Thornling]",
-    "subtitle": "Three orderlies. So far.",
-    "notes": [
-      "Patient is small. She is mostly compliant.",
-      "Three orderlies have lost ~~fingers~~ partial use of the right hand.",
-      "She apologizes after. !!It does not appear to help her.!!"
-    ],
-    "composure": 8,
-    "strength": 1.35,
-    "fixation": {
-      "type": "climb_on_clash",
-      "hint": "Every refusal is louder than the one before. She is sorry every time."
-    },
-    "tells": {
-      "press": [
-        "She takes the orderly's hand softly.",
-        "She apologizes in advance.",
-        "She turns the bandage toward the wrist."
-      ],
-      "hold": [
-        "She is mostly compliant.",
-        "She thanks me for the chair.",
-        "She accepts the dose without looking."
-      ],
-      "yield": [
-        "She lets the orderly back away.",
-        "She sets the hand down.",
-        "She returns to the small chair."
-      ]
-    },
-    "signature": {
-      "onWin": "She is small. She is sorry. We sit. ~~I keep both my hands.~~",
-      "onLoss": "She has not stopped apologizing. My right hand is in her lap. ~~It is hers now.~~"
-    },
-    "tier": 3
-  },
-  "Magmaw": {
-    "species": "Magmaw",
-    "displayName": "[Magmaw]",
-    "subtitle": "He says it was already open.",
-    "notes": [
-      "Subject sits with one ear toward the corridor.",
-      "Patient was a property surveyor. He insists the door was already open.",
-      "Asked what was beyond. ~~He described it.~~ The page is missing."
-    ],
-    "composure": 12,
-    "strength": 1.05,
-    "fixation": {
-      "type": "bound_hold_then",
-      "hint": "He does not open what is closed. ~~Only what is already.~~"
-    },
-    "tells": {
-      "press": [
-        "He stands in the open doorway, listening to what is on the other side.",
-        "He describes the corridor for me.",
-        "He walks me to the threshold."
-      ],
-      "hold": [
-        "He sits with one ear toward the corridor.",
-        "He keeps the door open. He does not go through.",
-        "He listens at the chair without rising."
-      ],
-      "yield": [
-        "He lets me close the door.",
-        "He turns his ear away.",
-        "He sets the file down."
-      ]
-    },
-    "signature": {
-      "onWin": "He tells me what is beyond. I do not write it down. ~~Neither does he.~~",
-      "onLoss": "I have walked through. The door is closed behind me. ~~It was already open.~~"
-    },
-    "tier": 4
-  },
-  "Deepmaw": {
-    "species": "Deepmaw",
-    "displayName": "[Deepmaw]",
-    "subtitle": "Staff are reminded not to go down.",
-    "notes": [
-      "Subject is housed below the main wards by request. Not hers.",
-      "Staff entering the lower level are required to ~~sign out~~ pair up.",
-      "She has not been observed eating. The orderlies are losing weight."
-    ],
-    "composure": 14,
-    "strength": 1.2,
-    "fixation": {
-      "type": "pull_drain",
-      "hint": "The corridor below takes from the staff while they are in it."
-    },
-    "tells": {
-      "press": [
-        "She rises from below the bed.",
-        "She climbs the stairs without using the rail.",
-        "She comes to the door on the upper floor."
-      ],
-      "hold": [
-        "She remains below.",
-        "She keeps the door of the lower level closed.",
-        "She does not answer the buzzer."
-      ],
-      "yield": [
-        "She withdraws into the corridor below.",
-        "She lets the staff sign out.",
-        "She closes the lower door behind us."
-      ]
-    },
-    "signature": {
-      "onWin": "I do not go down. She comes up to the threshold. We meet in the stairwell. ~~Halfway.~~",
-      "onLoss": "I have gone down. The orderlies will not. ~~No one signs out.~~"
-    },
-    "tier": 4
   },
   "Warden": {
     "species": "Warden",
@@ -1147,39 +745,68 @@
       "He has been signing in patients who do not arrive.",
       "When I gave my designation, he !!corrected me!!. The new number was already in the log."
     ],
-    "composure": 22,
-    "strength": 1.3,
-    "fixation": {
-      "type": "warden_shift",
-      "hint": "He keeps the desk. He answers in whatever shape the room takes. ~~He has been doing this longer than I have been.~~"
-    },
-    "tells": {
-      "press": [
-        "He turns the log toward me. My designation is at the top.",
-        "He signs a name beside the empty chair.",
-        "He stands. He does not need to.",
-        "He calls the orderly by my name.",
-        "He folds the chart closed before I have read it."
+    "tier": 5,
+    "intro": "He is at the desk. The log is open. The pen is between his fingers. There is a chair in front of the desk. There is a cabinet beside it. He moves to whichever position you stand at — !!he is closing the distance.!!",
+    "room": {
+      "positions": {
+        "door":       { "name": "the door",       "prose": "I am at the door. He has not turned to face me." },
+        "chair_front":{ "name": "the chair in front of the desk", "prose": "I am in the chair in front of the desk. The desk is between us." },
+        "cabinet":    { "name": "the cabinet",    "prose": "I am at the cabinet. The drawer is unlocked. My designation is in the file at the top." },
+        "side":       { "name": "the side of the desk", "prose": "I am at the side of the desk. The log is open to my designation. The pen rests beside it." },
+        "behind":     { "name": "behind the desk", "prose": "I am behind the desk. ~~His chair is where his chair is.~~" }
+      },
+      "edges": [
+        ["door","chair_front"],["chair_front","cabinet"],["cabinet","side"],
+        ["side","behind"],["chair_front","side"],["door","cabinet"]
       ],
-      "hold": [
-        "He waits at the desk as he has waited.",
-        "He keeps the pen between his fingers without writing.",
-        "He returns the file to the cabinet without opening it.",
-        "He is in the chair. He has been. He will be.",
-        "He keeps the lamp at the same angle."
+      "items": [
+        { "id": "old_file", "name": "the old file", "startAt": "cabinet", "carryable": true }
       ],
-      "yield": [
-        "He inclines his head once. He does not look up.",
-        "He sets the log down softly.",
-        "He turns the chair half away.",
-        "He returns the pen to the cup.",
-        "He closes the cabinet drawer."
-      ]
+      "playerStart": "door",
+      "patientStart": "behind",
+      "patientPattern": { "type": "follow_player", "lag": 1 },
+      "turnLimit": 10,
+      "playerComposureMax": 8,
+      "drainAdjacent": { "amount": 1, "afterTurn": 3 }
     },
+    "actions": [
+      {
+        "id": "take_old_file",
+        "at": "cabinet",
+        "requires": { "itemAtPlayer": "old_file" },
+        "label": "Take the old file from the cabinet.",
+        "voice": "It is my designation. ~~The old one.~~ The handwriting in it is not mine.",
+        "effect": { "pickup": "old_file" }
+      },
+      {
+        "id": "cross_out",
+        "at": "side",
+        "requires": { "carrying": "old_file" },
+        "label": "Use the pen on the desk to strike out my new designation in the log.",
+        "voice": "I cross out the number. He waits. ~~He is correcting me as I do it.~~ He sets the pen down between us.",
+        "effect": { "tag": "log_crossed" },
+        "once": true
+      },
+      {
+        "id": "write_old_name",
+        "at": "side",
+        "requires": { "tag": "log_crossed", "carrying": "old_file", "patientAt": "side" },
+        "label": "Write my old name in the empty line, where he can see.",
+        "voice": "I write it. He reads it. ~~He has been waiting for this name.~~ He inclines his head. He hands me the chair.",
+        "effect": "win"
+      },
+      {
+        "id": "sit_chair_front",
+        "at": "chair_front",
+        "label": "Sit in the chair in front of the desk.",
+        "voice": "I sit. He does not look up at first. The desk is between us. ~~The designation at the top is not mine.~~",
+        "effect": { "composure": -1 },
+        "once": true
+      }
+    ],
     "signature": {
       "onWin": "I take the chair across from his. He hands me the pen. ~~The log is empty from here on.~~",
       "onLoss": "He has signed me out. The number is not mine. !!The number was already in the log.!!"
-    },
-    "tier": 5
+    }
   }
 }

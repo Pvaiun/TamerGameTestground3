@@ -42,6 +42,6 @@ export function render() {
 function titleStrip() {
   const strip = el('div', { class: 'title-strip' });
   strip.appendChild(el('h1', {}, 'BLOODLINES'));
-  strip.appendChild(el('div', { class: 'subtitle' }, 'Five descents · one file'));
+  strip.appendChild(el('div', { class: 'subtitle' }, 'Four descents · one file'));
   return strip;
 }
