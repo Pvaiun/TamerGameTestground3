@@ -1,0 +1,133 @@
+{
+  "_format": {
+    "note": "Quiet events — non-combat encounters that appear on the corridor as a QUIET node. Each event has a title (page tag), prose (1-3 paragraphs setting the scene), and 2-3 choices, each with a label, voice (the protagonist's reason or hesitation), an outcome (paragraph shown after picking), and effects (an array of effect objects applied to run state). Effects: { heal: N }, { damage: N }, { addAttachment: 'id' or 'random' }, { addWard: 'speciesId' or 'random' }, { revealFixation: 'random' }, { loseAttachment: true }, { gainComposureMax: N }. Some choices have requires — e.g. requires an attachment slot empty."
+  },
+  "the_lounge": {
+    "id": "the_lounge",
+    "title": "// quiet · the staff lounge · after hours",
+    "prose": [
+      "The door was open. The light was on. A cup of coffee was still warm on the counter.",
+      "There was a chart on the table. The page was open to my designation. The pen was capped beside it."
+    ],
+    "choices": [
+      {
+        "label": "Read the chart.",
+        "voice": "I am the one being filed. I would like to see the file.",
+        "outcome": "It was written in my hand. The entries went forward from the day I had not yet had. ~~I closed it.~~ I read more of it.",
+        "effects": [{ "revealFixation": "random" }]
+      },
+      {
+        "label": "Take the coffee.",
+        "voice": "It is still warm. Someone has left it for me. ~~Someone has left.~~",
+        "outcome": "It was bitter. I felt steadier for a few minutes. The cup was warm in my hands long after it should not have been.",
+        "effects": [{ "heal": 4 }]
+      },
+      {
+        "label": "Take the pen.",
+        "voice": "If they will write me here, I want one of theirs.",
+        "outcome": "I put it in the inside pocket of the gown. I felt it against my chest for the rest of the descent.",
+        "effects": [{ "addAttachment": "random" }]
+      }
+    ]
+  },
+  "the_window": {
+    "id": "the_window",
+    "title": "// quiet · the east hallway · the window",
+    "prose": [
+      "The window was at the end of the hallway. The light through it was the same as it had been when I came in.",
+      "There was no garden beyond it. ~~There was, once.~~ I could see my reflection in the glass instead."
+    ],
+    "choices": [
+      {
+        "label": "Sit by the window for a long time.",
+        "voice": "I would like to feel the light without anything in it.",
+        "outcome": "It was hard to leave. When I did, I felt warmer than I had since admission. !!Less of me had been left in the rooms.!!",
+        "effects": [{ "heal": 5 }, { "gainComposureMax": 1 }]
+      },
+      {
+        "label": "Knock on the glass.",
+        "voice": "Sometimes the reflection answers.",
+        "outcome": "My reflection knocked back. We watched each other for a while. ~~The reflection went first.~~ I went next.",
+        "effects": [{ "addAttachment": "remember" }]
+      }
+    ]
+  },
+  "the_old_file": {
+    "id": "the_old_file",
+    "title": "// quiet · the records corridor · a cabinet left open",
+    "prose": [
+      "A cabinet drawer had been left open. The folders were dated from before I had been born.",
+      "One of them had my name on it. ~~My new name.~~ My old one."
+    ],
+    "choices": [
+      {
+        "label": "Open the file with my name.",
+        "voice": "I would like to know what I forgot.",
+        "outcome": "There was a name in it that I have not heard since I was a child. The name was crossed out. ~~The new name was the same.~~",
+        "effects": [{ "addAttachment": "familiar" }, { "damage": 2 }]
+      },
+      {
+        "label": "Close the drawer.",
+        "voice": "I do not need to know.",
+        "outcome": "I closed it. I felt steadier afterward. The corridor was longer than it had been before. ~~I did not look back.~~",
+        "effects": [{ "heal": 3 }]
+      },
+      {
+        "label": "Take a different file.",
+        "voice": "Someone else's name. ~~Someone who is not here anymore.~~",
+        "outcome": "I read it on the bench at the end of the corridor. The name was familiar. I think I had been called it once. !!I knew where they were.!!",
+        "effects": [{ "addWard": "random_filed" }]
+      }
+    ]
+  },
+  "the_orderly": {
+    "id": "the_orderly",
+    "title": "// quiet · the corridor · an orderly waiting",
+    "prose": [
+      "The orderly was leaning against the wall with her arms folded. She had been at the door of my room earlier.",
+      "She nodded when I came around the corner. ~~She said she was glad to see me.~~ She said the room would be ready when I was."
+    ],
+    "choices": [
+      {
+        "label": "Ask her about the patients on this floor.",
+        "voice": "She has been here longer than the file says she has.",
+        "outcome": "She told me about one of them. She did not say the name. She said: ~~the one in the corner room is not what she says she is~~. I knew which corner.",
+        "effects": [{ "revealFixation": "next_patient" }]
+      },
+      {
+        "label": "Ask her about the room she said would be ready.",
+        "voice": "I do not know what room she means. ~~I do.~~",
+        "outcome": "She smiled, briefly, the way the staff do when a patient has asked a question for the first time. She said the room would still be there when I got down to it. ~~She gave me a key.~~ I did not take it.",
+        "effects": [{ "addAttachment": "patient" }]
+      },
+      {
+        "label": "Walk past her without speaking.",
+        "voice": "I am tired of the staff knowing my name before I do.",
+        "outcome": "She let me. She did not look up. The corridor smelled of the floor wax it had smelled of the day I was admitted. ~~Both days were the same day.~~",
+        "effects": [{ "heal": 2 }]
+      }
+    ]
+  },
+  "the_bench": {
+    "id": "the_bench",
+    "title": "// quiet · the south corridor · the bench",
+    "prose": [
+      "There was a bench in the south corridor that had not been there the last time I passed. It was made of the same wood as the chairs in the rooms.",
+      "Sitting on it was someone I did not know. ~~Who I knew.~~ They did not look up."
+    ],
+    "choices": [
+      {
+        "label": "Sit beside them. Do not speak.",
+        "voice": "We have both been in the rooms. We do not need to be introduced.",
+        "outcome": "We sat for a while. They did not move. When I stood to leave, they tapped the bench once. ~~In thanks.~~ I tapped it once. I left.",
+        "effects": [{ "heal": 4 }, { "addAttachment": "compose" }]
+      },
+      {
+        "label": "Ask if they want to come with me.",
+        "voice": "I would not like to leave anyone on the bench.",
+        "outcome": "They looked up. They said the bench was for them. ~~They said the bench was for me.~~ They did not stand. !!I did.!!",
+        "effects": [{ "addWard": "random_unfiled" }]
+      }
+    ]
+  }
+}
