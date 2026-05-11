@@ -1,0 +1,56 @@
+{
+  "_format": {
+    "note": "Admission types — the protagonist's starting state for a run. Each admission has a different starting voice (admissionProse, the first scene), a name (institutional designation), composure (starting max), startingAttachments (id list), startingWards (patient id list — these are wards already 'filed' before the run begins, available for use), and unlockHint. Admissions unlock as the player completes runs (logged in archive)."
+  },
+  "0413": {
+    "id": "0413",
+    "designation": "0413",
+    "name": "Patient 0413",
+    "subtitle": "Admitted [[8]] · file open",
+    "voice": "I do not remember writing the address. The nurse was expecting me.",
+    "admissionProse": [
+      "I found the address on a card I do not remember writing. The road ended at the building.",
+      "The nurse opened the door before I knocked. She said they were expecting me. She handed me a file. She said it had been waiting.",
+      "Five descents. One corridor at a time. !!The door at the top is locked from this side.!!"
+    ],
+    "composure": 14,
+    "startingAttachments": ["resolve", "steady"],
+    "startingWards": [],
+    "unlockHint": "Available from the start.",
+    "unlockedFromStart": true
+  },
+  "0412": {
+    "id": "0412",
+    "designation": "0412",
+    "name": "Patient 0412",
+    "subtitle": "Admitted [[?]] · ~~file closed~~ file reopened",
+    "voice": "I was already here. They have not changed the room.",
+    "admissionProse": [
+      "There was a file at the desk with my designation. The handwriting was mine. The file had been opened before.",
+      "The nurse did not ask what I remembered. She said the room was the same. ~~She said I had asked for the same room.~~",
+      "I do not remember what I learned the last time. ~~Some of them remember me.~~"
+    ],
+    "composure": 12,
+    "startingAttachments": ["familiar", "listen", "brace"],
+    "startingWards": [],
+    "unlockHint": "Reach the warden once.",
+    "unlockedFromStart": false
+  },
+  "0414": {
+    "id": "0414",
+    "designation": "0414",
+    "name": "Patient 0414",
+    "subtitle": "Admitted [[12]] · self-referred",
+    "voice": "I came in on my own. I would like to be ~~kept~~ helped.",
+    "admissionProse": [
+      "I asked to be admitted. The nurse did not seem surprised. She said the room was ready.",
+      "I brought a list of names. I told her some of them might be here already.",
+      "~~She thanked me for the list.~~ She filed it. She said I would see them in turn."
+    ],
+    "composure": 16,
+    "startingAttachments": ["remember", "compose"],
+    "startingWards": [],
+    "unlockHint": "File three patients across all runs.",
+    "unlockedFromStart": false
+  }
+}

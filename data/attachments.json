@@ -1,0 +1,89 @@
+{
+  "_format": {
+    "note": "Attachments modify the player's three base moves (press, hold, yield). Each attachment has a key (id), name (display, sentence case institutional), voice (short prose line shown beneath the attachment in the dossier — the protagonist's reason for carrying it), desc (mechanical), trigger (when it fires: 'on_win_press', 'on_win_hold', 'on_win_yield', 'on_clash', 'on_loss_press', 'passive', 'on_session_start'), effect (key into session.js handler). Carried in the player's loadout; can be earned at Consult nodes."
+  },
+  "resolve": {
+    "name": "Resolve",
+    "voice": "I came in with more in me than they wrote down.",
+    "desc": "Begin each session with +2 composure (carries above max).",
+    "trigger": "on_session_start",
+    "effect": "bonus_composure_2"
+  },
+  "steady": {
+    "name": "Steady",
+    "voice": "When I do not give, the room is mine for a moment.",
+    "desc": "When HOLD beats YIELD, gain 1 composure.",
+    "trigger": "on_win_hold",
+    "effect": "heal_self_1"
+  },
+  "reach": {
+    "name": "Reach",
+    "voice": "When I lean in, they hear me a moment longer.",
+    "desc": "When PRESS beats HOLD, the patient's next move deals -1 damage to you.",
+    "trigger": "on_win_press",
+    "effect": "soften_next"
+  },
+  "listen": {
+    "name": "Listen",
+    "voice": "When I step back, the room speaks.",
+    "desc": "When YIELD beats PRESS, the patient's next tell is truthful.",
+    "trigger": "on_win_yield",
+    "effect": "true_next_tell"
+  },
+  "insist": {
+    "name": "Insist",
+    "voice": "I keep the question in the room.",
+    "desc": "All your successful PRESS strikes deal +1 damage. Clashes cost you +1.",
+    "trigger": "passive",
+    "effect": "press_plus_clash_minus"
+  },
+  "lock": {
+    "name": "Lock",
+    "voice": "The door I stand at, I stand at.",
+    "desc": "Clashes cost you 0 damage instead of 1.",
+    "trigger": "passive",
+    "effect": "clash_nullify"
+  },
+  "open": {
+    "name": "Open",
+    "voice": "When I give and they give, neither of us is the smaller.",
+    "desc": "When you and the patient both YIELD, gain 2 composure.",
+    "trigger": "on_clash_yield",
+    "effect": "heal_self_2"
+  },
+  "familiar": {
+    "name": "Familiar",
+    "voice": "I have read the file before. Of someone.",
+    "desc": "In your first encounter with any patient, all their tells are truthful for the first 3 beats.",
+    "trigger": "on_session_start",
+    "effect": "true_tells_first_session"
+  },
+  "brace": {
+    "name": "Brace",
+    "voice": "When the line gives, I take less with me.",
+    "desc": "All damage you take is reduced by 1 (minimum 1).",
+    "trigger": "passive",
+    "effect": "damage_minus_1"
+  },
+  "patient": {
+    "name": "Patient",
+    "voice": "I am one of them. I have been since admission.",
+    "desc": "Once per session, you may OBSERVE: yield this beat. Their next tell will be truthful.",
+    "trigger": "session_action",
+    "effect": "observe_action"
+  },
+  "compose": {
+    "name": "Compose",
+    "voice": "Between rooms I gather myself.",
+    "desc": "Heal 3 composure between sessions, in addition to the standard rest.",
+    "trigger": "between_sessions",
+    "effect": "rest_plus_3"
+  },
+  "remember": {
+    "name": "Remember",
+    "voice": "Once seen, they do not leave me.",
+    "desc": "Once-per-session: reveal the patient's fixation. (Otherwise revealed by the archive after enough encounters.)",
+    "trigger": "session_action",
+    "effect": "reveal_fixation_action"
+  }
+}
