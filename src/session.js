@@ -1,323 +1,308 @@
-// Session engine. A session is a single confrontation between Patient 0413
-// and one other patient. Each "beat" both sides choose one of three moves:
-// press, hold, yield. Resolution follows rock-paper-scissors with a damage
-// model.
+// Session engine — version 2. Deterministic tactical positioning puzzle.
 //
-// Outline of a beat (driven by the session UI, not auto-played):
-//   1. preBeat()  — pick the patient's move + tell, set state.session.tellText
-//                    and state.session.patientMove (hidden from the player view)
-//   2. UI shows the tell, waits for player to pick
-//   3. resolveBeat(playerMove) — apply RPS, damage, attachments, tick
-//   4. checkResolution() — session ends if either side hits 0 composure
+// Each session takes place in a room: a graph of named positions, with the
+// player and the patient as tokens on it. Items live at positions (or in the
+// player's hand). The patient moves each turn per a deterministic pattern;
+// the next move is computed and shown BEFORE the player acts. The player
+// chooses one of: MOVE (to an adjacent position), ACT (one of the actions
+// available at the current position given the current state), or WAIT.
 //
-// Damage model (base, before attachments):
-//   - winner deals: round( 3 * strength ) damage
-//   - loser deals:  0
-//   - clash (tie): both take 1 damage (with strength applied to the patient's
-//                  side: round(1 * strength) clamped to 1)
-//   - YIELD vs PRESS where YIELD wins: attacker (presser) takes 0; defender
-//     (yielder) gives no damage either. It's a slip — clean miss.
-//
-// Composure resolves to 0 ⇒ that side is overwhelmed/reached.
+// Win = trigger an action with effect "win".
+// Loss = composure <= 0 OR turnsRemaining <= 0 OR loseIf condition (e.g.
+//        patient reaches a forbidden position).
 
 import { state } from './state.js';
-import { PATIENTS, FIXATIONS, ATTACHMENTS, VOICE } from './data.js';
-import { pick, randi } from './rng.js';
-import { decideMove, tellMoveFor, pickTellPhrase, beats, counterTo } from './fixation.js';
-import { recordEncounter, recordTellSeen, recordReach, isFixationKnown } from './persist.js';
+import { PATIENTS } from './data.js';
+import { nextPatientMove, commitPatternState } from './patterns.js';
+import { recordEncounter, recordReach } from './persist.js';
 
+// ── lifecycle ────────────────────────────────────────────────────────
 export function beginSession(speciesId, opts = {}) {
   const patient = PATIENTS[speciesId];
   if (!patient) throw new Error('Unknown patient: ' + speciesId);
   recordEncounter(speciesId);
+  const room = patient.room;
+
+  // Items start at their declared positions.
+  const itemAt = {};
+  for (const item of room.items || []) itemAt[item.id] = item.startAt;
 
   const session = {
     patientId: speciesId,
     patient,
-    patientComposureMax: patient.composure,
-    patientComposure: patient.composure,
-    patientStrength: patient.strength,
-    playerComposureMax: state.composureMax,
-    playerComposure: state.composure,
+    playerPos: room.playerStart,
+    patientPos: room.patientStart,
+    patientNextPos: null,        // telegraphed
+    playerComposureMax: room.playerComposureMax || 6,
+    playerComposure:    room.playerComposureMax || 6,
+    turnLimit: room.turnLimit || 8,
+    turnsTaken: 0,
+    itemAt,                       // { itemId -> positionId }
+    carrying: null,               // single item carried
+    tags: new Set(),              // arbitrary boolean flags set by actions
+    actionsUsed: new Set(),       // ids of actions that have been used (for `once`)
     log: [],
-    beatIdx: 0,
-    patientHistory: [],
-    playerHistory: [],
-    lastClash: false,
-    lastPatientMove: null,
-    lastPlayerMove: null,
-    pendingPatientMove: null,
-    pendingPatientTell: null,
-    pendingTellLied: false,
-    softenNext: 0,
-    forceTruthNextN: 0,
-    pendingObserve: false,
-    fixationRevealedThisSession: false,
-    revealedFixation: false,
-    wardsUsedThisSession: new Set(),
-    attachmentsUsedThisSession: new Set(),
-    resolved: false,           // true once one side hits 0
-    outcomePicked: null,       // 'reach_file' | 'reach_release' | 'overwhelmed'
-    // For the very first session of a run, "familiar" attachment applies.
-    isFirstSessionEver: opts.isFirstSession || false,
+    resolved: false,
+    outcome: null,                // 'win' | 'loss'
+    lossReason: null,
   };
+
+  // Initialize cycle pattern internal state so the first telegraph is the
+  // NEXT position in the cycle after patientStart.
+  const pat = room.patientPattern || {};
+  if (pat.type === 'cycle' && Array.isArray(pat.sequence)) {
+    const startIdx = pat.sequence.indexOf(session.patientStart != null ? session.patientStart : room.patientStart);
+    session._cycleIdx = startIdx >= 0 ? startIdx : -1;
+  }
 
   // Apply on_session_start attachments.
   for (const aId of state.attachments) {
-    const a = ATTACHMENTS[aId];
-    if (!a) continue;
-    if (a.trigger === 'on_session_start') {
-      if (a.effect === 'bonus_composure_2') {
-        session.playerComposure = Math.min(session.playerComposure + 2, session.playerComposureMax + 2);
-      } else if (a.effect === 'true_tells_first_session' && session.isFirstSessionEver) {
-        session.forceTruthNextN = 3;
-      }
-    }
+    const a = ATTACHMENT_HANDLERS[aId];
+    if (a && a.onSessionStart) a.onSessionStart(session, state);
   }
 
-  // If archive considers the fixation revealed, mark it.
-  const revealAt = (FIXATIONS[patient.fixation.type] || {}).revealAt || 99;
-  if (isFixationKnown(speciesId, revealAt)) {
-    session.revealedFixation = true;
-  }
+  // Compute the patient's first move.
+  session.patientNextPos = nextPatientMove(session);
 
   state.session = session;
-  preBeat();
+  appendLog(session, patient.intro, 'intro');
   return session;
 }
 
-// Internal helpers.
-function getContext() {
-  const s = state.session;
-  return {
-    patient: s.patient,
-    fight: {
-      beatIdx: s.beatIdx,
-      patientComposure: s.patientComposure,
-      playerComposure: s.playerComposure,
-      patientHistory: s.patientHistory,
-      playerHistory: s.playerHistory,
-      lastClash: s.lastClash,
-      lastPatientMove: s.lastPatientMove,
-      lastPlayerMove: s.lastPlayerMove,
-    },
-    forceTruth: s.forceTruthNextN > 0,
-  };
+export function endSession() {
+  if (!state.session) return;
+  // Carry over player composure as a fraction of max — between sessions, you
+  // recover toward your run-wide composure max, but a bad session leaves you
+  // weaker for the next.
+  const frac = state.session.playerComposure / state.session.playerComposureMax;
+  state.composure = Math.max(1, Math.round(state.composureMax * Math.max(frac, 0.4)));
+  state.session = null;
 }
 
-function preBeat() {
+export function sessionOutcome() {
   const s = state.session;
-  if (s.resolved) return;
-  const ctx = getContext();
-  const { move } = decideMove(ctx);
-  const shownMove = tellMoveFor(ctx, move);
-  const { idx, text } = pickTellPhrase(s.patient, shownMove);
-  s.pendingPatientMove = move;
-  s.pendingPatientTell = { move: shownMove, idx, text };
-  s.pendingTellLied = (shownMove !== move);
-  if (idx >= 0) recordTellSeen(s.patientId, shownMove, idx);
+  if (!s || !s.resolved) return null;
+  return { reached: s.outcome === 'win', overwhelmed: s.outcome === 'loss', reason: s.lossReason, patientId: s.patientId };
 }
 
-// Player chooses a move. Resolves the beat.
-export function resolveBeat(playerMove) {
+// ── available actions at the current state ───────────────────────────
+// Returns a list of valid action objects keyed by id, each with a label,
+// voice string, and effect description.
+export function listActions() {
   const s = state.session;
-  if (s.resolved) return null;
-  const patientMove = s.pendingPatientMove;
-  const result = computeBeat(s, playerMove, patientMove);
-  s.log.push(result);
-
-  // Apply damage to both sides.
-  if (result.playerDamage > 0) s.playerComposure = Math.max(0, s.playerComposure - result.playerDamage);
-  if (result.patientDamage > 0) s.patientComposure = Math.max(0, s.patientComposure - result.patientDamage);
-  if (result.playerHeal > 0) s.playerComposure = Math.min(s.playerComposureMax + 4, s.playerComposure + result.playerHeal);
-
-  // History.
-  s.patientHistory.push(patientMove);
-  s.playerHistory.push(playerMove);
-  s.lastPatientMove = patientMove;
-  s.lastPlayerMove = playerMove;
-  s.lastClash = result.clash;
-  s.beatIdx++;
-
-  // Tick down per-beat effects.
-  if (s.forceTruthNextN > 0) s.forceTruthNextN--;
-  s.softenNext = result.softenAppliedThisBeat || s.softenNext;
-
-  // Check resolution.
-  if (s.patientComposure <= 0 || s.playerComposure <= 0) {
-    s.resolved = true;
-    s.pendingPatientMove = null;
-    s.pendingPatientTell = null;
-    if (s.patientComposure <= 0 && s.playerComposure > 0) recordReach(s.patientId);
-    return result;
+  if (!s || s.resolved) return [];
+  const acts = s.patient.actions || [];
+  const out = [];
+  for (const a of acts) {
+    if (a.at && a.at !== s.playerPos) continue;
+    if (a.once && s.actionsUsed.has(a.id)) continue;
+    if (!checkRequires(s, a.requires)) continue;
+    out.push(a);
   }
-
-  // Prepare next beat.
-  preBeat();
-  return result;
+  return out;
 }
 
-// Pure computation of one beat's effects — separated so the UI can preview
-// or replay. Mutates session for stateful attachments (softenNext, forceTruth).
-function computeBeat(s, playerMove, patientMove) {
-  const ATKS = state.attachments;
-  const baseHit = (str) => Math.max(1, Math.round(3 * str));
-  const cmp = beats(playerMove, patientMove);
-  let playerDamage = 0;
-  let patientDamage = 0;
-  let playerHeal = 0;
-  let clash = false;
-  let outcome = '';   // 'win'|'loss'|'clash'
-
-  // Apply softenNext (queued by 'reach' attachment): the patient's strength
-  // is reduced by 1 for damage this beat.
-  let effectiveStr = s.patientStrength;
-  if (s.softenNext > 0) {
-    effectiveStr = Math.max(0.5, effectiveStr - 0.4);
-    s.softenNext--;
-  }
-
-  // Apply patient's per-beat strength growth (grow_each_beat fixation).
-  if (s.patient.fixation && s.patient.fixation.type === 'grow_each_beat') {
-    s.patientStrength = +(s.patientStrength + 0.1).toFixed(2);
-  }
-
-  if (cmp === 1) {
-    // Player wins the RPS. They lose composure based on player's pressure (1.0).
-    outcome = 'win';
-    let dmg = baseHit(1.0);
-    // 'insist' attachment: +1 PRESS damage.
-    if (playerMove === 'press' && ATKS.includes('insist')) dmg += 1;
-    patientDamage = dmg;
-  } else if (cmp === -1) {
-    // Player loses. They lose composure based on the patient's strength.
-    outcome = 'loss';
-    let dmg = Math.max(1, Math.round(3 * effectiveStr));
-    if (ATKS.includes('brace')) dmg = Math.max(1, dmg - 1);
-    playerDamage = dmg;
-  } else {
-    // Clash (tie).
-    clash = true;
-    outcome = 'clash';
-    if (playerMove === 'yield' && patientMove === 'yield') {
-      // Mutual step-back. 'open' attachment: heal 2.
-      if (ATKS.includes('open')) playerHeal += 2;
-    } else {
-      // Mutual press, or mutual hold.
-      let dmgToPlayer = 1;
-      let dmgToPatient = 1;
-      if (ATKS.includes('lock')) dmgToPlayer = 0;
-      if (ATKS.includes('insist')) dmgToPlayer += 1; // insist clash penalty
-      playerDamage += dmgToPlayer;
-      patientDamage += dmgToPatient;
+function checkRequires(s, requires) {
+  if (!requires) return true;
+  if (requires.patientAt && s.patientPos !== requires.patientAt) return false;
+  if (requires.carrying && s.carrying !== requires.carrying) return false;
+  if (requires.notCarrying && s.carrying) return false;
+  if (requires.itemAtPlayer && s.itemAt[requires.itemAtPlayer] !== s.playerPos) return false;
+  if (requires.itemAt) {
+    for (const [item, pos] of Object.entries(requires.itemAt)) {
+      if (s.itemAt[item] !== pos) return false;
     }
   }
-
-  // Trigger-driven attachments fired on win.
-  let softenApplied = 0;
-  let trueNextTell = false;
-  if (outcome === 'win') {
-    if (playerMove === 'press' && ATKS.includes('reach')) softenApplied = 1;
-    if (playerMove === 'hold'  && ATKS.includes('steady')) playerHeal += 1;
-    if (playerMove === 'yield' && ATKS.includes('listen')) trueNextTell = true;
-  }
-
-  // Pull fixation: patient drains player composure 1 each beat.
-  if (s.patient.fixation && s.patient.fixation.type === 'pull_drain') {
-    playerDamage += 1;
-  }
-
-  if (softenApplied > 0) s.softenNext = (s.softenNext || 0) + softenApplied;
-  if (trueNextTell) s.forceTruthNextN = Math.max(s.forceTruthNextN, 1);
-
-  return {
-    playerMove, patientMove,
-    outcome,          // 'win'|'loss'|'clash'|'slip'
-    clash,
-    playerDamage, patientDamage,
-    playerHeal,
-    softenAppliedThisBeat: softenApplied,
-  };
-}
-
-// Use a ward. Returns { applied, voiceLine } or null.
-export function invokeWard(speciesId) {
-  const s = state.session;
-  if (!s || s.resolved) return null;
-  const w = state.wards.find(w => w.speciesId === speciesId);
-  if (!w || w.used) return null;
-  const patientData = PATIENTS[speciesId];
-  if (!patientData || !patientData.ward) return null;
-  const eff = patientData.ward.effect;
-  if (eff === 'skip_beat') {
-    // The patient does not act this beat. Beat is consumed with no damage.
-    s.beatIdx++;
-    s.patientHistory.push(null);
-    s.playerHistory.push(null);
-    s.lastPatientMove = null;
-    s.lastPlayerMove = null;
-    s.lastClash = false;
-    preBeat();
-  } else if (eff === 'true_tells_2') {
-    s.forceTruthNextN = Math.max(s.forceTruthNextN, 2);
-    // Re-prep the tell for current beat (truth this time).
-    preBeat();
-  } else if (eff === 'reveal_fixation') {
-    s.revealedFixation = true;
-    s.fixationRevealedThisSession = true;
-  }
-  w.used = true;
-  s.wardsUsedThisSession.add(speciesId);
-  return {
-    applied: true,
-    voiceLine: patientData.ward.voice,
-  };
-}
-
-// Player chooses to OBSERVE (via 'patient' attachment). Patient still acts;
-// player auto-yields and learns the next tell truthfully.
-export function observe() {
-  const s = state.session;
-  if (!s || s.resolved) return null;
-  if (!state.attachments.includes('patient')) return null;
-  if (s.attachmentsUsedThisSession.has('patient')) return null;
-  s.attachmentsUsedThisSession.add('patient');
-  // Force the player's move to YIELD this beat. The patient's move is whatever
-  // they were going to play. Then the next tell is truthful.
-  const r = resolveBeat('yield');
-  if (!s.resolved) s.forceTruthNextN = Math.max(s.forceTruthNextN, 1);
-  return r;
-}
-
-// Player reveals fixation via 'remember' attachment.
-export function rememberAction() {
-  const s = state.session;
-  if (!s || s.resolved) return null;
-  if (!state.attachments.includes('remember')) return null;
-  if (s.attachmentsUsedThisSession.has('remember')) return null;
-  s.attachmentsUsedThisSession.add('remember');
-  s.revealedFixation = true;
-  s.fixationRevealedThisSession = true;
+  if (requires.tag && !s.tags.has(requires.tag)) return false;
+  if (requires.notTag && s.tags.has(requires.notTag)) return false;
   return true;
 }
 
-// Compute the result of a session — to be called after resolved.
-export function sessionOutcome() {
+// ── available movement targets ───────────────────────────────────────
+export function listMoves() {
   const s = state.session;
-  if (!s.resolved) return null;
-  const reached = s.patientComposure <= 0;
-  return {
-    reached,
-    overwhelmed: !reached,
-    patientId: s.patientId,
-    leftoverComposure: s.playerComposure,
-  };
+  if (!s || s.resolved) return [];
+  const room = s.patient.room;
+  const neighbors = [];
+  for (const [a, b] of room.edges || []) {
+    if (a === s.playerPos) neighbors.push(b);
+    else if (b === s.playerPos) neighbors.push(a);
+  }
+  return neighbors;
 }
 
-// End the session: writes composure back to state, clears session.
-export function endSession() {
+// ── actions ──────────────────────────────────────────────────────────
+export function move(toPosId) {
   const s = state.session;
-  if (!s) return;
-  state.composure = Math.max(0, Math.min(state.composureMax, s.playerComposure));
-  state.session = null;
+  if (!s || s.resolved) return null;
+  if (!listMoves().includes(toPosId)) return null;
+  s.playerPos = toPosId;
+  appendLog(s, positionProse(s, toPosId), 'move');
+  resolveTurn(s);
+  return s;
+}
+
+export function wait() {
+  const s = state.session;
+  if (!s || s.resolved) return null;
+  appendLog(s, 'I wait. The room shifts a little around me.', 'wait');
+  resolveTurn(s);
+  return s;
+}
+
+export function act(actionId) {
+  const s = state.session;
+  if (!s || s.resolved) return null;
+  const actions = listActions();
+  const a = actions.find(x => x.id === actionId);
+  if (!a) return null;
+  s.actionsUsed.add(a.id);
+  appendLog(s, a.voice, 'act');
+  applyEffect(s, a.effect);
+  // Some actions resolve into win immediately; in that case the turn does
+  // not advance further.
+  if (s.resolved) return s;
+  resolveTurn(s);
+  return s;
+}
+
+function applyEffect(s, effect) {
+  if (effect == null) return;
+  if (effect === 'win')        { s.resolved = true; s.outcome = 'win';  return; }
+  if (effect === 'narrative')  return;
+  if (typeof effect !== 'object') return;
+  if (effect.composure != null) {
+    s.playerComposure = Math.max(0, s.playerComposure + effect.composure);
+    if (effect.composure < 0) appendLog(s, composureLine(effect.composure), 'damage');
+  }
+  if (effect.pickup) {
+    // Can only carry one thing. If already carrying something, that item is
+    // dropped where the player stands (kept in the world) and the new item
+    // picked up.
+    if (s.carrying && s.carrying !== effect.pickup) s.itemAt[s.carrying] = s.playerPos;
+    s.carrying = effect.pickup;
+    delete s.itemAt[effect.pickup];
+  }
+  if (effect.drop)   { s.itemAt[effect.drop] = s.playerPos; if (s.carrying === effect.drop) s.carrying = null; }
+  if (effect.tag)    { s.tags.add(effect.tag); }
+  if (effect.untag)  { s.tags.delete(effect.untag); }
+  if (effect.patientMoveTo) {
+    // Override both current and pre-telegraphed pattern move so the
+    // explicit positioning sticks. The pattern's next move will be
+    // recomputed at the end of this turn.
+    s.patientPos = effect.patientMoveTo;
+    s.patientNextPos = effect.patientMoveTo;
+  }
+}
+
+function composureLine(delta) {
+  if (delta <= -2) return '!!It costs me to be here.!!';
+  return 'I lose a little of myself here.';
+}
+
+// ── turn resolution ──────────────────────────────────────────────────
+function resolveTurn(s) {
+  s.turnsTaken++;
+
+  // Patient moves to the previously-telegraphed next position.
+  if (s.patientNextPos != null) {
+    s.patientPos = s.patientNextPos;
+    commitPatternState(s);
+  }
+
+  // Drain effects.
+  const room = s.patient.room;
+  if (room.drainAdjacent && s.playerPos === s.patientPos) {
+    const ok = !room.drainAdjacent.afterTurn || s.turnsTaken > room.drainAdjacent.afterTurn;
+    if (ok) {
+      s.playerComposure = Math.max(0, s.playerComposure - (room.drainAdjacent.amount || 1));
+      appendLog(s, 'The cold of being beside them deepens.', 'damage');
+    }
+  }
+  if (room.drainEachTurn) {
+    const ok = !room.drainEachTurn.after || s.turnsTaken > room.drainEachTurn.after;
+    if (ok) {
+      s.playerComposure = Math.max(0, s.playerComposure - (room.drainEachTurn.amount || 1));
+      appendLog(s, 'The room takes a little of me each turn.', 'damage');
+    }
+  }
+
+  // Lose conditions.
+  if (room.loseIf) {
+    if (room.loseIf.patientAt && s.patientPos === room.loseIf.patientAt) {
+      s.resolved = true; s.outcome = 'loss'; s.lossReason = 'patient_escaped';
+      return;
+    }
+  }
+  if (s.playerComposure <= 0) {
+    s.resolved = true; s.outcome = 'loss'; s.lossReason = 'composure';
+    return;
+  }
+  if (s.turnsTaken >= s.turnLimit) {
+    s.resolved = true; s.outcome = 'loss'; s.lossReason = 'time';
+    return;
+  }
+
+  // Compute next telegraph.
+  s.patientNextPos = nextPatientMove(s);
+}
+
+// ── logging ──────────────────────────────────────────────────────────
+function appendLog(s, text, cls) {
+  if (!text) return;
+  s.log.push({ text, cls });
+  if (s.log.length > 40) s.log.shift();
+}
+
+function positionProse(s, posId) {
+  const p = s.patient.room.positions[posId];
+  if (!p) return '';
+  return p.prose || `I am at ${p.name || posId}.`;
+}
+
+// ── attachments (lightweight, since most affect the new mechanic differently) ─
+const ATTACHMENT_HANDLERS = {
+  resolve: {
+    onSessionStart(session) {
+      session.playerComposure = Math.min(session.playerComposureMax + 2, session.playerComposure + 2);
+    },
+  },
+  steady: {
+    onSessionStart(session) {
+      session.turnLimit++;
+    },
+  },
+  brace: {
+    onSessionStart(session) {
+      session._braceActive = true;
+    },
+  },
+  compose: {
+    onSessionStart(session) {
+      session.playerComposure = Math.min(session.playerComposureMax + 1, session.playerComposure + 1);
+    },
+  },
+  remember: {
+    onSessionStart() { /* enables an action; handled separately */ },
+  },
+};
+
+// Public: position metadata helper for UI.
+export function positionAt(s, posId) {
+  return s.patient.room.positions[posId] || { name: posId };
+}
+
+// Public: items at a given position (excluding player-held).
+export function itemsAtPosition(s, posId) {
+  const out = [];
+  for (const item of s.patient.room.items || []) {
+    if (s.itemAt[item.id] === posId) out.push(item);
+  }
+  return out;
+}
+
+// Public: name of an item by id.
+export function itemName(s, itemId) {
+  const it = (s.patient.room.items || []).find(x => x.id === itemId);
+  return it ? it.name : itemId;
 }

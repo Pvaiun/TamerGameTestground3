@@ -3,139 +3,148 @@
 A document-horror psychiatric roguelite. Vanilla ES modules, no build step, no deps. Open `index.html` to run.
 
 ## Premise in one paragraph
-Patient 0413 is admitted to a hospital that is more than a hospital. Five descents below the admission desk, one corridor at a time. Each encounter is another patient — a person with a tragedy filed in their dossier and a behavioral pattern that drives them. Combat is not HP attrition. It's a **session** — back-and-forth between two people, with **composure** instead of HP, **rock-paper-scissors at the base** (press / hold / yield), and a **fixation** per patient that bends the rules. The dossier prose is the only source of strategic information.
+Patient 0413 is admitted to a hospital that is more than a hospital. Four descents below the admission desk, one corridor at a time. Each encounter is another patient — a person with a tragedy filed in their dossier. Combat is **The Round**: a small deterministic tactical positioning puzzle. Each patient has a room — a graph of named positions. You and the patient are tokens on that graph. The patient moves deterministically per their pattern; their next move is **telegraphed** before you act. You move, act at a position (each action is a sentence written in the protagonist's voice), or wait. The puzzle is reaching them — solving the specific sequence of moves and acts that satisfies the patient's release condition — before the orderly arrives, before your composure breaks, or before the patient escapes.
 
 ## Architecture in one paragraph
-`src/main.js` awaits `loadData()` (fetches `data/*.json` into named exports on `src/data.js`), then calls `render()`. The whole app is **state mutation + re-render**: modules import `state` from `src/state.js`, mutate it, then call `render()` from `src/ui/render.js`. `render()` clears `#app` and dispatches on `state.screen` to a screen renderer in `src/ui/screens.js` (or `src/ui/session.js` for the session screen). No virtual DOM, no framework, no router. UI builds DOM via the `el(tag, props, children)` helper in `src/ui/dom.js`. The visual aesthetic is **document horror** — every screen is a page in a corrupted testimony; patients are abstract 16×16 pixel-bitmap glyphs (`data/glyphs.json`) with prose dossiers. Persistence (archive of encountered patients, tells observed, unlocks) lives in `src/persist.js`, backed by `localStorage`.
+`src/main.js` awaits `loadData()` (fetches `data/*.json` into named exports on `src/data.js`), then calls `render()`. The whole app is **state mutation + re-render**: modules import `state` from `src/state.js`, mutate it, then call `render()` from `src/ui/render.js`. `render()` clears `#app` and dispatches on `state.screen` to a screen renderer in `src/ui/screens.js` (or `src/ui/session.js` for the session screen). No virtual DOM, no framework, no router. UI builds DOM via the `el(tag, props, children)` helper in `src/ui/dom.js`. The visual aesthetic is **document horror** — every screen is a page in a corrupted testimony; patients are abstract 16×16 pixel-bitmap glyphs (`data/glyphs.json`) with prose dossiers. Persistence (archive of encountered patients, runs completed, admissions unlocked) lives in `src/persist.js`, backed by `localStorage`.
 
 ## Tone (preserved)
 Three voice registers, kept strictly separate.
 - **Patient files**: third-person clinical, sentence case, [Bracketed] nicknames.
-- **Session lines (tells, etc.)**: neutral they/them on the patient side.
+- **Patient actions / room prose**: first-person, the protagonist describing what they do.
 - **Screen narration**: protagonist's first-person `I`.
 - Inline corruption markup parsed in `src/ui/textCorrupt.js`: `~~strike~~`, `[[N]]` (red bar), `**gold**` (rare), `!!red!!`.
 
 ## Gameplay loop
-1. **Admission** — pick an admission type (Patient 0413 is the only one unlocked from the start). Each admission has a starting composure, starting attachments, optional starting wards, and an intro scene.
-2. **Corridor** — pick one of 2–3 doors per floor. 5 floors total. Floor types: PATIENT (session), KEEPER (mini-boss session on floors 2 and 4), QUIET (text event), CONSULT (pick an upgrade), WARDEN (final boss on floor 5).
-3. **Session** — composure starts at the patient's max. Each beat you pick press / hold / yield; the patient does too. Rock-paper-scissors resolves. Damage is `round(3 × strength)` of the winner. Clash = both lose 1. Composure → 0 means that side is **reached** (you) or **overwhelmed** (you lose).
-4. **Reached** — file the patient as a ward (if they have a ward ability), or let them rest (heal). Filing makes them available for the rest of the run AND marks them as filed in the persistent archive.
+1. **Admission** — pick an admission type (Patient 0413 unlocked from start). Each admission has a starting composure, starting attachments, and an intro scene.
+2. **Corridor** — pick one of 2–3 doors per floor. 4 floors total. Floor types: PATIENT (session), KEEPER (mini-boss session on floor 3), QUIET (text event), CONSULT (pick an upgrade), WARDEN (final boss on floor 4).
+3. **Session** — the puzzle. The room is a graph of positions. The patient moves per a deterministic pattern (`still`, `toward(target)`, `cycle`, `follow_player`, `mirror_player`, `follow_item`, `stay_unless_seated`). The next move is telegraphed. You pick MOVE (to an adjacent position), ACT (one of the available actions at your current position), or WAIT. Win = trigger an action with `effect: "win"`. Lose = `composure ≤ 0` OR `turnsRemaining ≤ 0` OR a `loseIf` condition (e.g. patient reaches a forbidden position).
+4. **Reached / Overwhelmed** — composure heals on a win; on a loss the run ends.
 5. **Repeat** until the Warden is reached (win) or you fall (loss).
 
 ## File map
 
 ### Data (JSON, drives behavior — prefer adding params here over hardcoding in JS)
-- `data/patients.json` — every patient (id, displayName, subtitle, notes[3], composure, strength, fixation{type,hint}, tells{press[],hold[],yield[]}, signature{onWin,onLoss}, tier, optional ward{name,desc,voice,effect}).
-- `data/fixations.json` — behavioral rules. Each entry has name, desc, revealAt (encounters before the archive reveals the fixation), tellLies (whether the patient's tell can lie). The matching decider lives in `src/fixation.js`.
-- `data/attachments.json` — player move modifiers (Resolve, Steady, Reach, Listen, Insist, Lock, Open, Familiar, Brace, Patient, Compose, Remember). Trigger types: `on_session_start`, `on_win_press`, `on_win_hold`, `on_win_yield`, `on_clash`, `passive`, `session_action`.
-- `data/admissions.json` — starting kits. Composure, starting attachments, starting wards, intro prose. `0413` is unlocked from the start; `0412` unlocks on first win; `0414` unlocks after filing 3 patients across all runs.
-- `data/events.json` — quiet events: title, prose, choices[{label, voice, outcome, effects[]}]. Effects: `heal`, `damage`, `addAttachment` (id or `random`), `addWard` (`random_filed`, `random_unfiled`, or species id), `revealFixation`, `gainComposureMax`.
+- `data/patients.json` — every patient. Fields: species (id), displayName (the [bracketed] file name), subtitle, notes[3], tier (1-5), intro (room-establishing prose shown at session start), room (positions, edges, items, playerStart, patientStart, patientPattern, turnLimit, playerComposureMax, optional loseIf, drainAdjacent, drainEachTurn), actions[] (id, at, requires, label, voice, effect, optional once), signature{onWin, onLoss}.
+- `data/attachments.json` — player-carried modifiers (Resolve, Steady, Compose, Familiar, Patient, Remember, Open, Lock). Each has name, voice, desc, effect (a handler key consulted in `src/session.js`).
+- `data/admissions.json` — starting kits. Composure, starting attachments, intro prose. `0413` unlocked from start; `0412` unlocks on first win; `0414` after filing 3 patients across all runs.
+- `data/events.json` — quiet events: title, prose, choices[{label, voice, outcome, effects[]}]. Effects: `heal`, `damage`, `addAttachment` (id or `random`), `gainComposureMax`.
 - `data/glyphs.json` — 16×16 hand-authored bitmap glyph per species. `#` filled, `.` empty. Rendered as crisp-edged SVG by `src/ui/glyphs.js`.
-- `data/voiceprose.json` — system labels, protagonist narration, session resolutions (per-outcome variants), RPS rules brief, outcome wording.
+- `data/voiceprose.json` — system labels, protagonist narration, outcome wording.
 
 ### Core (`src/`)
-- `state.js` — `state` singleton + constants (`FLOORS_TOTAL`, `MAX_WARDS`, `MAX_ATTACHMENTS`), `resetRun`, `resetToTitle`. State is global and mutated directly.
-- `data.js` — `loadData()` + named exports (`PATIENTS`, `FIXATIONS`, `ATTACHMENTS`, `ADMISSIONS`, `EVENTS`, `GLYPHS`, `VOICE`); helpers `patientIds()` and `tieredPatientIds(maxTier)`.
-- `persist.js` — localStorage-backed archive. `getArchive`, `patientArchive(speciesId)`, `recordEncounter`, `recordTellSeen`, `recordReach`, `recordFile`, `recordFixationRevealed`, `recordRunResult`, `isFixationKnown(speciesId, revealAt)`, `isAdmissionUnlocked`, `filedPatientIds`, `tellsSeenForPatient`, `resetArchive`. Schema key is `bloodlines/archive/v1`.
-- `rng.js` — `rand`, `randi`, `pick`, `pickN`, `sleep`.
+- `state.js` — `state` singleton + constants (`FLOORS_TOTAL`, `MAX_ATTACHMENTS`), `resetRun`, `resetToTitle`. State is global and mutated directly.
+- `data.js` — `loadData()` + named exports (`PATIENTS`, `ATTACHMENTS`, `ADMISSIONS`, `EVENTS`, `GLYPHS`, `VOICE`); helpers `patientIds()` and `tieredPatientIds(maxTier)`.
+- `persist.js` — localStorage-backed archive. `getArchive`, `patientArchive(speciesId)`, `recordEncounter`, `recordReach`, `recordRunResult`, `isAdmissionUnlocked`, `resetArchive`. Schema key is `bloodlines/archive/v1`.
+- `rng.js` — `rand`, `randi`, `pick`, `pickN`, `sleep`. (No RNG is used inside a session — the gameplay is deterministic.)
 - `audio.js` — `sfx(type)` WebAudio bleeps.
-- `fixation.js` — `beats(a, b)`, `counterTo(m)`, `decideMove(ctx)`, `tellMoveFor(ctx, actualMove)`, `pickTellPhrase(patient, move)`. Houses the deciders for every fixation key (locked_hold, refuse_yield, compulsion_press, sink_hold, bound_hold_then, bound_until_low, echo_last, drift_cycle, mirror, counter_last, forget_tell, invert_tell, watch_no_lie, pull_drain, grow_each_beat, climb_on_clash, anchor_press, warden_shift).
-- `session.js` — the combat engine. `beginSession(speciesId)`, `resolveBeat(playerMove)`, `invokeWard(speciesId)`, `observe()`, `rememberAction()`, `sessionOutcome()`, `endSession()`. One beat: `preBeat()` selects the patient's move + tell, the player picks, `resolveBeat` computes damage with attachments applied. Session state hangs off `state.session` until cleared.
-- `run.js` — the corridor engine. `generateCorridor()`, `placeKeepers(corridor)`, `startRun(admissionId)`, `chooseNode(floorIdx, nodeIdx)`, `advanceCorridor()`, `addAttachment(id)`, `addWard(speciesId)`, `rollConsultOptions()`, `applyEventEffect(effect)`.
+- `patterns.js` — `nextPatientMove(session)` and `commitPatternState(session)`. Each pattern is a pure function (session, patientPos) → nextPositionId. Pattern types: `still`, `toward`, `cycle`, `follow_player`, `mirror_player`, `follow_item`, `stay_unless_seated`.
+- `session.js` — the combat engine. `beginSession(speciesId)`, `move(toPosId)`, `wait()`, `act(actionId)`, `listActions()`, `listMoves()`, `sessionOutcome()`, `endSession()`. Session state hangs off `state.session` until cleared.
+- `run.js` — the corridor engine. `generateCorridor()`, `placeKeepers(corridor)`, `startRun(admissionId)`, `chooseNode(floorIdx, nodeIdx)`, `advanceCorridor()`, `addAttachment(id)`, `rollConsultOptions()`, `applyEventEffect(effect)`.
 
 ### UI (`src/ui/`)
 - `render.js` — `render()` dispatcher; routes on `state.screen`. Title strip on every screen except `'session'`.
-- `screens.js` — every non-session screen: `renderStart`, `renderAdmissionPick`, `renderAdmissionConfirm`, `renderCorridor`, `renderQuiet`, `renderConsult`, `renderReached`, `renderOverwhelmed`, `renderVictory`, `renderGameover`, `renderArchive`. Helpers: `docPage(tag)`, `docButton(label, onclick, variant)`, `actionRow(...)`, `statusStrip()` (composure + carried attachments + wards).
-- `session.js` — the session UI. Layout: engagement strip → patient panel (glyph + notes + composure/strength bars + fixation + "about to" tell) → player strip (composure + wards + attachments) → action box (3 move buttons + optional ward/observe/remember rows + RPS reminder footer + narrative log of last 4 lines).
-- `glyphs.js` — `renderGlyph(speciesName)` returns SVG markup. 2×2 cells with `shape-rendering=crispEdges`. Color is `currentColor`; size via CSS.
-- `textCorrupt.js` — `parseProse(input)` consumes the `~~strike~~ / [[N]] / **gold** / !!red!!` markup and returns HTML.
-- `animations.js` — `spawnFloat(anchor, text, kind)`, `shakeNode(node)`, `flashNode(node, cls)`.
+- `screens.js` — every non-session screen: `renderStart`, `renderAdmissionPick`, `renderAdmissionConfirm`, `renderCorridor`, `renderQuiet`, `renderConsult`, `renderReached`, `renderOverwhelmed`, `renderVictory`, `renderGameover`, `renderArchive`.
+- `session.js` — the session UI. Layout: engagement strip (turn / composure) → patient panel (glyph + dossier) → room map (positions, marker for player/patient, telegraph for patient's next move) → narrative log → action panel (acts + moves + wait).
+- `glyphs.js` — `renderGlyph(speciesName)` returns SVG markup.
+- `textCorrupt.js` — `parseProse(input)` consumes the corruption markup and returns HTML.
+- `animations.js` — `spawnFloat`, `shakeNode`, `flashNode`.
 - `dom.js` — `el(tag, props, children)`, `attachLongPress`, `app()`.
 
 ### Assets
-- `index.html` — one page, `#app` + `#modal-root`, loads IBM Plex Mono and `src/main.js` as module. No canvas, no framework.
-- `styles.css` — all styles. Layered: tokens (`:root`) → corruption text utilities → body/app shell → document page → status strip → corridor + nodes → choice list → session screen → reached/overwhelmed → archive → floats/shakes → responsive.
+- `index.html` — one page, `#app` + `#modal-root`, loads IBM Plex Mono and `src/main.js` as module.
+- `styles.css` — all styles, layered: tokens → corruption text utilities → doc page → status strip → corridor + nodes → choice list → session (strip + grid + room map + actions + resolved) → reached/overwhelmed → archive → floats → responsive.
 
 ## Key data schemas
 
 ### Patient (`data/patients.json`)
 ```json
 {
-  "species": "Cinderling",
-  "displayName": "[Cinderling]",
-  "subtitle": "The rest of the family was indoors.",
+  "species": "Mosshorn",
+  "displayName": "[Mosshorn]",
+  "subtitle": "He has been still since 1972.",
   "notes": ["...", "...", "..."],
-  "composure": 8,
-  "strength": 0.9,
-  "fixation": { "type": "refuse_yield", "hint": "She does not give ground..." },
-  "tells": {
-    "press": ["She runs at the door.", "..."],
-    "hold":  ["...", "...", "..."],
-    "yield": []
-  },
-  "signature": { "onWin": "...", "onLoss": "..." },
   "tier": 1,
-  "ward": { "name": "Witness", "desc": "...", "voice": "...", "effect": "true_tells_2" }
+  "intro": "He sits on the bed. He has not moved in fifty years. ...",
+  "room": {
+    "positions": {
+      "door":   { "name": "the door",   "prose": "I am at the door. The room is cold." },
+      "bed":    { "name": "the bed",    "prose": "I am beside the bed. He does not look up." },
+      "chair":  { "name": "the chair",  "prose": "I am in the chair beside the bed." }
+    },
+    "edges": [["door","bed"],["door","chair"],["bed","chair"]],
+    "items": [],
+    "playerStart": "door",
+    "patientStart": "bed",
+    "patientPattern": { "type": "still" },
+    "turnLimit": 8,
+    "playerComposureMax": 6
+  },
+  "actions": [
+    {
+      "id": "sit_with_him",
+      "at": "chair",
+      "requires": { "patientAt": "bed" },
+      "label": "Sit with him.",
+      "voice": "I do not say anything. I sit. ~~He is somewhere else.~~",
+      "effect": "win"
+    }
+  ],
+  "signature": {
+    "onWin": "He is the same as he was. I have just ~~understood~~ stood with him.",
+    "onLoss": "I leave the room before he does. ~~I am not.~~"
+  }
 }
 ```
 
-### Fixation (`data/fixations.json`)
-Each entry has `name`, `desc`, `revealAt` (encounter count before archive reveals it), `tellLies` (and optionally `lieRate`). The matching decider in `src/fixation.js` (keyed by the same name) returns `{ move }`.
+### Action effects
+- `"win"` — session ends, player reaches the patient.
+- `"narrative"` — text plays; no state change.
+- `{ composure: -N }` — player loses N composure.
+- `{ pickup: "itemId" }` — pick up item. If already carrying, the previous item is dropped at the current position.
+- `{ drop: "itemId" }` — drop the named item at the current position.
+- `{ tag: "tagName" }` / `{ untag: "tagName" }` — set/clear a session-scoped flag.
+- `{ patientMoveTo: "posId" }` — force-move the patient to a specific position (overrides the pattern's next move).
 
-### Attachment (`data/attachments.json`)
-```json
-{
-  "name": "Reach",
-  "voice": "When I lean in, they hear me a moment longer.",
-  "desc": "When PRESS beats HOLD, the patient's next move deals -1 damage to you.",
-  "trigger": "on_win_press",
-  "effect": "soften_next"
-}
-```
-Triggers fire from `computeBeat` in `session.js`. Effect names are handler keys consulted there.
+### Action requires
+- `patientAt: "posId"` — patient must be at the given position.
+- `carrying: "itemId"` — player must be holding the named item.
+- `notCarrying: true` — player must not be carrying anything.
+- `itemAtPlayer: "itemId"` — the named item is at the player's current position.
+- `itemAt: { itemId: "posId", ... }` — items are at specific positions.
+- `tag: "tagName"` / `notTag: "tagName"` — a session-scoped flag is set / unset.
 
-### Admission (`data/admissions.json`)
-Composure, starting attachments, starting wards, intro prose. Unlock conditions live in `recordRunResult` in `src/persist.js`.
-
-### Event (`data/events.json`)
-Title, prose paragraphs, 2–3 choices each with label / voice / outcome / effects.
-
-### Session (state.session — in-memory only)
-```
-{
-  patientId, patient, patientComposureMax, patientComposure, patientStrength,
-  playerComposureMax, playerComposure,
-  log, beatIdx, patientHistory, playerHistory,
-  lastClash, lastPatientMove, lastPlayerMove,
-  pendingPatientMove, pendingPatientTell, pendingTellLied,
-  softenNext, forceTruthNextN,
-  attachmentsUsedThisSession, wardsUsedThisSession,
-  revealedFixation, fixationRevealedThisSession,
-  resolved, _narrLog
-}
-```
+### Movement patterns (`src/patterns.js`)
+- `still` — never moves.
+- `toward(target)` — BFS-shortest-path one step toward the target position.
+- `cycle(sequence)` — fixed loop through a sequence of positions.
+- `follow_player(lag)` — step toward the player's current position. Optional `lag` delays the first move.
+- `mirror_player` — same as follow_player without lag.
+- `follow_item(item)` — step toward wherever the named item is. If carried by the player, stays still.
+- `stay_unless_seated(seatTrigger, moveTo)` — stays at start until the player has occupied `seatTrigger`, then moves to `moveTo` permanently.
 
 ## Adding things — checklists
 
-**New patient:** add an entry in `patients.json` with composure/strength/fixation/tells/signature/tier. If they should be fileable, include a `ward` block. Add a glyph in `glyphs.json`. The encounter generator (`src/run.js`) picks patients by tier band automatically.
+**New patient:** add an entry in `patients.json` with the room, items, pattern, actions, and signature. Add a glyph in `glyphs.json` (16×16 `#`/`.` rows). Verify solvability with `node /tmp/solver.mjs` (the BFS verifier).
 
-**New fixation:** add the entry to `fixations.json` (name, desc, revealAt). Add a decider function in `src/fixation.js` under `DECIDERS` keyed by the same id, returning `{ move }`. If it lies, add lying logic in `tellMoveFor`.
+**New pattern:** add a `case` to the switch in `src/patterns.js`'s `nextPatientMove`. Patterns must be pure functions of session state; no RNG.
 
-**New attachment:** add to `attachments.json` (name, voice, desc, trigger, effect). Wire up the effect in `computeBeat` (or `beginSession` for `on_session_start`) in `src/session.js`.
+**New attachment:** add to `attachments.json` (name, voice, desc, effect). Wire the effect in the `ATTACHMENT_HANDLERS` table in `src/session.js` (typically an `onSessionStart` callback) or directly in the relevant flow.
 
-**New event:** add an entry in `events.json` with title, prose, choices, effects. The corridor generator picks events at random for quiet nodes.
+**New event:** add an entry in `events.json` with title, prose, choices, effects.
 
 **New admission:** add an entry in `admissions.json`. Wire the unlock condition in `recordRunResult` (`src/persist.js`).
 
-**New screen:** add a renderer to `src/ui/screens.js` (or a new module), import in `src/ui/render.js`, register in the `switch`, set `state.screen` to enter.
+**New screen:** add a renderer to `src/ui/screens.js`, import in `src/ui/render.js`, register in the `switch`, set `state.screen` to enter.
 
 ## Conventions
-- **Data over code.** New numbers belong in JSON. JSON entry → JS handler reads params.
+- **Data over code.** New numbers and per-patient design belongs in JSON.
 - **`state` is global and mutated directly.** Don't pass it as a parameter; import it.
 - **Re-render after mutation.** Any user-visible change ends with `render()`.
 - **No build step.** ES modules, browser-native.
+- **No RNG inside a session.** The puzzle must be deterministic and solvable. Run generation is the only place RNG fires.
 - **No comments unless non-obvious.** Identifiers carry intent.
 - **Voice is sacred (the style; not the words).** Match the institutional patient-file register. Use the corruption markup sparingly and intentionally.
 
 ## Test / verify
-No automated tests. Manual: open `index.html` in a browser, play through a run. The narrative log inside the session carries the most diagnostic information.
+No automated tests. Manual: open `index.html` in a browser, play through a run. The solver in `/tmp/solver.mjs` (BFS over session states) verifies that each patient puzzle is solvable within its turn budget — re-run it after editing room/actions.

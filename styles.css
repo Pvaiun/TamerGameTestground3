@@ -472,7 +472,7 @@ h1::before { content: '// '; color: var(--ink-60); }
   padding-left: var(--space-3);
 }
 
-/* ── session screen ───────────────────────────────────────────────── */
+/* ── session screen — the room puzzle ─────────────────────────────── */
 .session-strip {
   display: flex; gap: 0; align-items: baseline;
   font-size: var(--fs-tiny);
@@ -490,237 +490,129 @@ h1::before { content: '// '; color: var(--ink-60); }
   padding-left: var(--space-3);
   border-left: 1px solid var(--rule-faint);
 }
-.session-strip-name { color: var(--ink-100); margin-left: auto; padding-left: var(--space-3); }
+.session-strip-name { color: var(--ink-100); }
+.session-strip-comp { color: var(--ink-100); margin-left: auto; padding-left: var(--space-3); border-left: 1px solid var(--rule-faint); }
+.session-strip-comp.low { color: var(--doc-blood); }
 
-.patient-panel {
+.session-grid {
   display: grid;
-  grid-template-columns: minmax(110px, 130px) 1fr;
-  gap: var(--space-3) var(--space-4);
-  padding: var(--space-3) 0 var(--space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--rule-faint);
-  position: relative;
-  transition: filter var(--dur-quick) var(--ease-out);
+}
+
+/* patient panel (left side) */
+.patient-panel {
+  display: flex; flex-direction: column; gap: var(--space-2);
 }
 .patient-head {
-  grid-column: 1 / 3;
   display: grid;
-  grid-template-columns: minmax(110px, 130px) 1fr;
-  gap: var(--space-3) var(--space-4);
+  grid-template-columns: 80px 1fr;
+  gap: var(--space-3);
   align-items: start;
+  margin-bottom: var(--space-2);
 }
 .patient-glyph {
-  width: 110px; height: 110px;
+  width: 80px; height: 80px;
   color: var(--ink-100);
 }
 .patient-glyph svg { width: 100%; height: 100%; display: block; }
-.patient-ident {
-  display: flex; flex-direction: column; gap: 2px;
-}
+.patient-ident { display: flex; flex-direction: column; gap: 2px; }
 .patient-name {
-  font-size: var(--fs-title);
+  font-size: var(--fs-header);
   color: var(--ink-100);
   letter-spacing: 0.5px;
   line-height: 1.1;
   word-break: break-word;
 }
 .patient-subtitle {
-  font-size: var(--fs-prose);
+  font-size: var(--fs-body-tight);
   color: var(--ink-80);
   margin-top: 4px;
-  margin-bottom: var(--space-2);
 }
-
 .patient-notes {
-  grid-column: 2 / 3;
   display: flex; flex-direction: column; gap: 1px;
   color: var(--ink-100);
-  font-size: var(--fs-body);
+  font-size: var(--fs-body-tight);
   line-height: 1.55;
 }
 .patient-note-line { padding: 1px 0; }
 
-.patient-panel .bar-row {
-  grid-column: 2 / 3;
-}
-.bar-row {
-  display: flex; align-items: center; gap: var(--space-2);
-  font-size: var(--fs-body-tight);
-  padding: 2px 0;
-}
-.bar-label {
-  width: 70px; flex-shrink: 0;
-  font-size: var(--fs-tiny);
-  color: var(--ink-60);
-  letter-spacing: var(--ls-label);
-  text-transform: lowercase;
-}
-.bar-track {
-  flex: 1;
-  height: 6px;
-  background: var(--ink-20);
-  position: relative;
-  border: 1px solid var(--rule-faint);
-}
-.bar-fill {
-  display: block;
-  height: 100%;
-  background: var(--ink-100);
-  transition: width var(--dur-slow) var(--ease-out);
-}
-.bar-fill.comp  { background: var(--doc-blood); }
-.bar-fill.str   { background: var(--ink-80); }
-.bar-fill.player{ background: var(--ink-100); }
-.bar-num {
-  color: var(--ink-100);
-  min-width: 60px;
-  flex-shrink: 0;
-  font-size: var(--fs-body-tight);
-  text-align: right;
-}
-
-.patient-fixation, .patient-about {
-  grid-column: 2 / 3;
+/* room map (right side) */
+.room-map {
   display: flex; flex-direction: column; gap: 2px;
-  padding-top: var(--space-2);
-  margin-top: var(--space-1);
-  border-top: 1px dotted var(--rule-faint);
+  padding-left: var(--space-3);
+  border-left: 1px dotted var(--rule-faint);
 }
-.patient-fixation-label, .patient-about-label {
+.room-map-label {
   font-size: var(--fs-tiny);
-  color: var(--ink-60);
   letter-spacing: var(--ls-label);
+  color: var(--ink-60);
   text-transform: lowercase;
+  margin-bottom: var(--space-1);
 }
-.patient-fixation-body {
-  color: var(--ink-100);
+.room-pos-row {
+  display: flex; align-items: baseline;
   font-size: var(--fs-body);
-  line-height: 1.55;
+  letter-spacing: var(--ls-tight);
+  padding: 3px 0;
+  color: var(--ink-80);
+  border-left: 2px solid transparent;
+  padding-left: var(--space-2);
+  transition: color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
 }
-.patient-fixation-body .fix-name { color: var(--ink-100); letter-spacing: 0.5px; }
-.patient-fixation-body .fix-sep  { color: var(--ink-40); }
-.patient-fixation-body .fix-desc { color: var(--ink-80); }
-.patient-about-body {
-  color: var(--ink-100);
-  font-size: var(--fs-prose);
-  font-style: italic;
-  padding-left: var(--space-1);
-  border-left: 2px solid var(--doc-gold);
-  padding: 4px var(--space-2);
-  min-height: 1.6em;
-}
-.tell-pending, .tell-done { color: var(--ink-40); font-style: italic; }
-
-.patient-panel.shake-pulse { animation: panel-shake var(--dur-slow) var(--ease-out); }
-@keyframes panel-shake {
-  0%   { transform: translateX(0); }
-  20%  { transform: translateX(-4px); }
-  40%  { transform: translateX(4px); }
-  60%  { transform: translateX(-3px); }
-  80%  { transform: translateX(2px); }
-  100% { transform: translateX(0); }
-}
-
-/* ── player strip in session ──────────────────────────────────────── */
-.player-strip {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--rule-faint);
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-body-tight);
-  color: var(--ink-100);
-  flex-wrap: wrap;
-}
-.player-strip.shake-pulse { animation: panel-shake var(--dur-slow) var(--ease-out); }
-.player-strip-left {
-  display: flex; align-items: center; gap: var(--space-3);
+.room-pos-row.player-here { color: var(--ink-100); border-left-color: var(--ink-100); }
+.room-pos-row.patient-here { color: var(--ink-100); }
+.room-pos-row.patient-here .room-pos-name { color: var(--doc-blood); }
+.room-pos-row.patient-next .room-pos-name { color: var(--doc-gold); font-style: italic; }
+.room-pos-marker {
+  width: 4ch;
   flex-shrink: 0;
+  color: var(--ink-40);
+  font-size: var(--fs-body-tight);
 }
-.player-strip-right {
-  display: flex; flex-direction: column; gap: 4px;
-  min-width: 0;
-  flex: 1;
-  font-size: var(--fs-tiny);
+.room-pos-row.player-here .room-pos-marker,
+.room-pos-row.patient-here .room-pos-marker { color: var(--ink-100); }
+.room-pos-row.patient-next .room-pos-marker { color: var(--doc-gold); }
+.room-pos-name {
+  color: var(--ink-100);
   letter-spacing: var(--ls-tight);
 }
-.player-id {
-  color: var(--ink-100);
-  font-size: var(--fs-prose);
-  letter-spacing: 2px;
+.room-pos-items {
+  color: var(--ink-60);
+  font-size: var(--fs-body-tight);
+  font-style: italic;
 }
-.player-comp {
-  display: flex; align-items: center; gap: var(--space-2);
-  min-width: 240px;
+.room-pos-items.carrying { color: var(--doc-gold); }
+.telegraph-row {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dotted var(--rule-faint);
+  font-size: var(--fs-body-tight);
+  color: var(--ink-60);
+  letter-spacing: var(--ls-tight);
 }
-.player-comp-label { color: var(--ink-60); font-size: var(--fs-tiny); letter-spacing: var(--ls-label); }
-.player-comp .bar-track { width: 140px; flex: 0 0 140px; }
-.player-comp-num { color: var(--ink-100); font-size: var(--fs-body-tight); min-width: 60px; }
-.player-comp-num.low { color: var(--doc-blood); }
-.bar-fill.player.low { background: var(--doc-blood); animation: low-pulse 1.6s infinite ease-in-out; }
-@keyframes low-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.5; }
-}
+.telegraph-text { color: var(--ink-60); }
+.telegraph-pos { color: var(--doc-gold); font-style: italic; }
 
-.player-wards, .player-attachments {
-  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
-}
-.player-strip-label { color: var(--ink-60); letter-spacing: var(--ls-tight); }
-.player-strip-dim { color: var(--ink-40); font-style: italic; }
-.player-pill {
-  border: 1px solid var(--rule-soft);
-  padding: 1px 5px;
-  font-size: var(--fs-tiny);
-  letter-spacing: 0;
-  color: var(--ink-100);
-}
-.player-pill.used {
-  color: var(--ink-40);
-  border-color: var(--ink-20);
-  text-decoration: line-through;
-}
-
-/* ── action box in session ───────────────────────────────────────── */
-.session-action-box {
+/* actions panel */
+.actions-panel {
   padding: var(--space-3) 0;
+  display: flex; flex-direction: column; gap: var(--space-2);
 }
-
-.move-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-.move-btn {
-  background: transparent;
-  border: 1px solid var(--rule-soft);
-  color: var(--ink-100);
-  font-family: var(--font-mono);
-  padding: var(--space-3) var(--space-3);
-  cursor: pointer;
-  text-align: center;
-  transition: border-color var(--dur-quick) var(--ease-out), background var(--dur-quick) var(--ease-out);
-  display: flex; flex-direction: column; gap: 2px; align-items: center;
-}
-.move-btn:hover { border-color: var(--ink-100); background: rgba(224, 224, 226, 0.04); }
-.move-btn-label { font-size: var(--fs-prose); color: var(--ink-100); letter-spacing: 0.5px; }
-.move-btn-sub   { font-size: var(--fs-tiny); color: var(--ink-60); letter-spacing: var(--ls-label); }
-.move-btn.move-press:hover { border-color: var(--doc-blood); }
-.move-btn.move-hold:hover  { border-color: var(--ink-100); }
-.move-btn.move-yield:hover { border-color: var(--ink-80); }
-
-.extras-sep {
+.actions-label {
   font-size: var(--fs-tiny);
   letter-spacing: var(--ls-label);
-  color: var(--ink-40);
-  text-align: center;
-  margin: var(--space-2) 0;
+  color: var(--ink-60);
   text-transform: lowercase;
 }
-.extras-row {
-  display: flex; flex-direction: column; gap: 4px;
-  margin-bottom: var(--space-3);
+.actions-col {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-bottom: var(--space-1);
 }
-.extra-btn {
+.actions-col.moves { color: var(--ink-80); }
+.action-btn {
   background: transparent;
   border: 0;
   border-left: 1px dotted var(--rule-faint);
@@ -729,15 +621,54 @@ h1::before { content: '// '; color: var(--ink-60); }
   text-align: left;
   padding: 4px var(--space-3);
   cursor: pointer;
-  font-size: var(--fs-body);
+  font-size: var(--fs-prose);
   letter-spacing: var(--ls-tight);
-  transition: border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+  display: flex; align-items: baseline; gap: 2px;
+  transition: border-color var(--dur-quick) var(--ease-out), background var(--dur-quick) var(--ease-out);
 }
-.extra-btn:hover { border-left-color: var(--ink-100); }
-.extra-btn-marker { color: var(--ink-60); }
-.extra-btn:hover .extra-btn-marker { color: var(--ink-100); }
-.extra-btn-label  { color: var(--ink-100); }
-.extra-btn-desc   { color: var(--ink-60); font-size: var(--fs-tiny); }
+.action-btn:hover {
+  border-left-color: var(--ink-100);
+  background: rgba(224, 224, 226, 0.04);
+}
+.action-btn.move-btn { color: var(--ink-80); }
+.action-btn.move-btn:hover { color: var(--ink-100); }
+.action-btn.wait-btn { color: var(--ink-60); border-left-style: dashed; }
+.action-marker { color: var(--ink-40); flex-shrink: 0; }
+.action-btn:hover .action-marker { color: var(--ink-100); }
+.action-label { flex: 1; }
+
+/* resolved (win or loss) panel */
+.resolved-panel {
+  padding: var(--space-4) 0;
+}
+.resolved-head {
+  font-size: var(--fs-header);
+  letter-spacing: 1px;
+  margin-bottom: var(--space-3);
+}
+.resolved-head.win { color: var(--ink-100); }
+.resolved-head.loss { color: var(--doc-blood); }
+.resolved-signature {
+  color: var(--ink-100);
+  font-style: italic;
+  font-size: var(--fs-prose);
+  line-height: 1.6;
+  border-left: 2px solid var(--doc-gold);
+  padding: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+@keyframes panel-shake {
+  0%, 100% { transform: translateX(0); }
+  20%  { transform: translateX(-4px); }
+  40%  { transform: translateX(4px); }
+  60%  { transform: translateX(-3px); }
+  80%  { transform: translateX(2px); }
+}
+@keyframes low-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
 
 /* ── narrative block ──────────────────────────────────────────────── */
 .narrative-block {
@@ -765,18 +696,6 @@ h1::before { content: '// '; color: var(--ink-60); }
 .narr-line.ward  { color: var(--doc-gold); }
 .narr-line.observe { color: var(--ink-80); font-style: italic; }
 .narr-line.beat { /* base class — see modifier above */ }
-
-/* RPS reminder — small clinical footer under move buttons */
-.rps-reminder {
-  margin-top: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px dotted var(--rule-faint);
-  font-size: var(--fs-tiny);
-  color: var(--ink-40);
-  letter-spacing: var(--ls-label);
-  text-transform: lowercase;
-  text-align: center;
-}
 
 /* ── reached / overwhelmed ─────────────────────────────────────────── */
 .reached-dossier {
@@ -845,50 +764,14 @@ h1::before { content: '// '; color: var(--ink-60); }
   line-height: 1.55;
 }
 .archive-note-line { padding: 1px 0; }
-
-.archive-fixation {
+.archive-signature {
   margin-top: var(--space-2);
-  padding: var(--space-2) 0;
-  border-top: 1px dotted var(--rule-faint);
-  border-bottom: 1px dotted var(--rule-faint);
-}
-.archive-fixation-label {
-  font-size: var(--fs-tiny);
-  color: var(--ink-60);
-  letter-spacing: var(--ls-label);
-  text-transform: lowercase;
-}
-.archive-fixation-text {
+  padding: var(--space-1) var(--space-3);
   color: var(--ink-100);
   font-size: var(--fs-body-tight);
-  margin-top: 2px;
+  font-style: italic;
+  border-left: 2px solid var(--doc-gold);
 }
-.archive-tells {
-  margin-top: var(--space-2);
-  font-size: var(--fs-body-tight);
-}
-.archive-tells-label {
-  font-size: var(--fs-tiny);
-  color: var(--ink-60);
-  letter-spacing: var(--ls-label);
-  text-transform: lowercase;
-  margin-bottom: var(--space-1);
-}
-.archive-tells-move {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: var(--space-3);
-  margin-bottom: var(--space-1);
-}
-.archive-tells-movename { color: var(--ink-60); font-size: var(--fs-tiny); letter-spacing: var(--ls-label); text-transform: lowercase; padding-top: 2px; }
-.archive-tells-list { display: flex; flex-direction: column; gap: 2px; }
-.archive-tell-line {
-  font-size: var(--fs-body-tight);
-  color: var(--ink-100);
-  line-height: 1.5;
-}
-.archive-tell-line.unseen { color: var(--ink-40); }
-.archive-tell-line.unseen .redact { background: var(--ink-20); }
 
 /* ── floats / shakes ──────────────────────────────────────────────── */
 .floating {
@@ -913,22 +796,16 @@ h1::before { content: '// '; color: var(--ink-60); }
 /* ── responsive ───────────────────────────────────────────────────── */
 @media (max-width: 720px) {
   body { padding: 14px 10px 32px; }
-  .patient-panel {
+  .session-grid {
     grid-template-columns: 1fr;
   }
-  .patient-head {
-    grid-template-columns: 80px 1fr;
-  }
-  .patient-glyph { width: 80px; height: 80px; }
-  .patient-name { font-size: 22px; }
-  .patient-notes, .patient-panel .bar-row,
-  .patient-fixation, .patient-about { grid-column: 1 / -1; }
-  .move-row { grid-template-columns: 1fr; }
+  .patient-head { grid-template-columns: 64px 1fr; }
+  .patient-glyph { width: 64px; height: 64px; }
+  .patient-name { font-size: 18px; }
+  .room-map { padding-left: 0; border-left: 0; border-top: 1px dotted var(--rule-faint); padding-top: var(--space-2); margin-top: var(--space-2); }
   .status-strip { grid-template-columns: 1fr; gap: var(--space-2); }
   .node-row { grid-template-columns: 1fr; }
   .session-strip { font-size: 9px; flex-wrap: wrap; }
-  .player-comp .bar-track { width: 100px; flex: 0 0 100px; }
-  .player-comp { min-width: 0; }
   .reached-dossier { grid-template-columns: 80px 1fr; }
   .reached-glyph { width: 80px; height: 80px; }
 }
